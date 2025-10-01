@@ -2005,24 +2005,17 @@ if ((selectedTable === 'consultas_servicios' || selectedTable === 'OS Pendientes
 }
     
     html += '<div class="action-buttons">';
-    
+
 config.actions.forEach(action => {
     const val = item[action];
     if (!val) return;
-
-    // ROLES:
-    // - Lectura: Solo coordenadas y foto en consultas_servicios
-    // - Contratista: Todo excepto gráficas
-    // - ATTF: consultas_servicios y TX y Cortes, sin gráficas
-    // - Supervisor: Acceso completo
-    // - Otros (por defecto): Acceso completo
 
     const isCoordenadasLector = (action === 'Coordenadas' || action === 'CoordenadasLector');
     const isCoordenadasGis = (action === 'Coordenadasgis' || action === 'CoordenadasGis');
     const isFotoLink = (action === 'FotoLink' || action === 'fotolink');
     const isGrafica = (action === 'Grafica');
     
-    // 1. Lógica para el rol 'Lectura'
+    // 1. ROL LECTURA
     if (currentUser.rol === 'Lectura') {
         if (selectedTable === 'consultas_servicios') {
             if (isCoordenadasLector) {
@@ -2034,7 +2027,7 @@ config.actions.forEach(action => {
             }
         }
         
-    // 2. Lógica para el rol 'Contratista'
+    // 2. ROL CONTRATISTA
     } else if (currentUser.rol === 'Contratista') {
         if (selectedTable === 'consultas_servicios') {
             if (isCoordenadasLector) {
@@ -2050,7 +2043,6 @@ config.actions.forEach(action => {
                 html += `<button class="btn btn-secondary" onclick="abrirCoordenadas('${val}')">📍 Ver Ubicación</button>`;
             }
         } else {
-            // Lógica para otras tablas (Coordenadas, OS Pendientes, etc.)
             if (action.toLowerCase().includes('coordenadas')) {
                 html += `<button class="btn btn-secondary" onclick="abrirCoordenadas('${val}')">📍 Coordenadas</button>`;
             } else if (isFotoLink) {
@@ -2058,7 +2050,7 @@ config.actions.forEach(action => {
             }
         }
         
-    // 3. Lógica para el rol 'ATTF'
+    // 3. ROL ATTF (SIN ACCESO A GRÁFICAS)
     } else if (currentUser.rol === 'ATTF') {
         if (selectedTable === 'consultas_servicios') {
             if (isCoordenadasLector) {
@@ -2068,15 +2060,32 @@ config.actions.forEach(action => {
             } else if (isFotoLink) {
                 html += `<button class="btn btn-secondary" onclick="verFoto('${val}')">📸 Ver Foto</button>`;
             }
+            // NO mostrar gráficas para ATTF
         } else if (selectedTable === 'TX y Cortes') {
             if (isCoordenadasLector) {
                 html += `<button class="btn btn-secondary" onclick="abrirCoordenadas('${val}')">📍 Ver Ubicación</button>`;
             }
         }
         
-    // 4. Lógica para el rol 'Supervisor' y cualquier otro rol (Acceso Completo)
+    // 4. ROL PODA (SIN ACCESO A GRÁFICAS)
+    } else if (currentUser.rol === 'Poda') {
+        if (selectedTable === 'consultas_servicios') {
+            if (isCoordenadasLector) {
+                html += `<button class="btn btn-secondary" onclick="abrirCoordenadas('${val}')">📍 Coordenadas Lector</button>`;
+            } else if (isCoordenadasGis) {
+                html += `<button class="btn btn-secondary" onclick="abrirCoordenadas('${val}')">🗺️ Coordenadas GIS</button>`;
+            } else if (isFotoLink) {
+                html += `<button class="btn btn-secondary" onclick="verFoto('${val}')">📸 Ver Foto</button>`;
+            }
+            // NO mostrar gráficas para Poda
+        } else if (selectedTable === 'TX y Cortes') {
+            if (isCoordenadasLector) {
+                html += `<button class="btn btn-secondary" onclick="abrirCoordenadas('${val}')">📍 Ver Ubicación</button>`;
+            }
+        }
+        
+    // 5. ROL SUPERVISOR Y OTROS (ACCESO COMPLETO INCLUYENDO GRÁFICAS)
     } else { 
-        // Esta rama maneja Supervisor, Consulta, o cualquier otro rol no especificado
         if (selectedTable === 'consultas_servicios') {
             if (isCoordenadasLector) {
                 html += `<button class="btn btn-secondary" onclick="abrirCoordenadas('${val}')">📍 Coordenadas Lector</button>`;
@@ -2085,7 +2094,7 @@ config.actions.forEach(action => {
             } else if (isFotoLink) {
                 html += `<button class="btn btn-secondary" onclick="verFoto('${val}')">📸 Ver Foto</button>`;
             } else if (isGrafica) {
-                // El Supervisor tiene acceso a Gráficas
+                // Solo Supervisor y Consulta tienen acceso a Gráficas
                 html += `<button class="btn btn-secondary" onclick="verGraficasPorIndice(${index})">📊 Ver Consumos</button>`;
             }
         } else if (selectedTable === 'TX y Cortes') {
@@ -2093,7 +2102,6 @@ config.actions.forEach(action => {
                 html += `<button class="btn btn-secondary" onclick="abrirCoordenadas('${val}')">📍 Ver Ubicación</button>`;
             }
         } else {
-            // Lógica genérica para todas las demás tablas (Coordenadas, OS Pendientes, etc.)
             if (action.toLowerCase().includes('coordenadas')) {
                 html += `<button class="btn btn-secondary" onclick="abrirCoordenadas('${val}')">📍 Coordenadas</button>`;
             } else if (isFotoLink) {
@@ -2101,7 +2109,7 @@ config.actions.forEach(action => {
             }
         }
     }
-}); // Cierre del forEach de las acciones
+});
     
 html += '</div></div>'; // Cierre de action-buttons y result-card
 
@@ -3103,3 +3111,5 @@ document.addEventListener('DOMContentLoaded', function() {
 </script>
 </body>
 </html>
+
+
