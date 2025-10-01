@@ -4,9 +4,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes, minimum-scale=0.5, maximum-scale=3.0">
     <title>Sistema de Consultas Campo</title>
-    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
-    <meta http-equiv="Pragma" content="no-cache">
-    <meta http-equiv="Expires" content="0">
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.3/dist/umd/supabase.min.js "></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js "></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2 "></script>
@@ -509,7 +506,55 @@
 }
 
 
+// Registro del Service Worker para funcionalidad offline
+if ('serviceWorker' in navigator) {
+    window.addEventListener('load', function() {
+        navigator.serviceWorker.register('/sw.js')
+            .then(function(registration) {
+                console.log('SW registrado');
+            })
+            .catch(function(registrationError) {
+                console.log('Error SW:', registrationError);
+            });
+    });
+}
 
+// Cache datos importantes en localStorage (solo para datos de sesión)
+function guardarDatosOffline() {
+    if (currentUser) {
+        sessionStorage.setItem('cleca_user_session', JSON.stringify({
+            user: currentUser,
+            timestamp: Date.now()
+        }));
+    }
+}
+
+// Verificar datos offline al cargar
+function verificarDatosOffline() {
+    const sessionData = sessionStorage.getItem('cleca_user_session');
+    if (sessionData) {
+        const data = JSON.parse(sessionData);
+        const tiempoTranscurrido = (Date.now() - data.timestamp) / 1000 / 60; // minutos
+        
+        if (tiempoTranscurrido < 45) { // 45 minutos
+            currentUser = data.user;
+            document.getElementById('currentUser').textContent = `Bienvenido, ${data.user.usuario}`;
+            document.getElementById('userInfo').classList.remove('hidden');
+            document.getElementById('loginSection').style.display = 'none';
+            document.getElementById('tableSelectionSection').style.display = 'block';
+            return true;
+        }
+    }
+    return false;
+}
+
+// Inicializar al cargar la página
+window.addEventListener('load', function() {
+    if (!verificarDatosOffline()) {
+        // Mostrar login si no hay sesión válida
+        document.getElementById('loginSection').style.display = 'block';
+    }
+});
     </style>
 </head>
 <body>
@@ -537,7 +582,7 @@
                     <label for="password">Contraseña:</label>
                     <input type="password" id="password" placeholder="Ingrese su contraseña">
                 </div>
-                <button class="btn" id="loginButton">Iniciar Sesión</button>
+                <button class="btn" onclick="login()">Iniciar Sesión</button>
             </div>
             <p class="footer">By. Jose Meneses</p>
         </div>
@@ -637,265 +682,75 @@
     </div>
 
 
-
 <script>
-    // --- 1. DEFINICIÓN DE VARIABLES GLOBALES (Usar solo 'let', una vez) ---
-    let currentUser = null;
-    let selectedTable = null;
-    let consultasData = []; 
-
-    // --- 2. CONFIGURACIÓN E INICIALIZACIÓN DE SUPABASE ---
     const SUPABASE_URL = 'https://bsxllefnehbwkuqbelec.supabase.co';
     const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJzeGxsZWZuZWhid2t1cWJlbGVjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTc0NjQzMTksImV4cCI6MjA3MzA0MDMxOX0.Ma8elbehsraBPzPwSmntE78NaAfTgBKgDW_hMb-ohhg';
     const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-    
-    // NOTA: Las variables ya fueron declaradas arriba. ¡No las repitas!
 
-    // === CONFIGURACIÓN DE TURNOS ATTF (Visibilidad del Botón) ===
+    let currentUser = null;
+    let selectedTable = null;
+    let consultasData = []; // Array para almacenar los datos de consultas
+
+      // === CONFIGURACIÓN DE TURNOS ATTF (2 horas ANTES y 2 horas DESPUÉS) ===
 const TURNOS_ATTF = {
-    // Turno 1: 6:00 AM - 2:00 PM (Botón visible: 4 AM a 10 AM)
+    // Turno 1: 6:00 AM - 2:00 PM (Acceso: 4 AM a 4 PM)
     turno1: {
         nombre: "Turno 1 (6:00 AM - 2:00 PM)",
-        horaInicio: 6,
-        horaFin: 14,
-        horaInicioGracia: 4,  // El botón aparece a las 4 AM
-        horaFinGracia: 10,    // El botón desaparece después de las 10 AM
+        horaInicioGracia: 4,  // 6 - 2 = 4 AM
+        horaFinGracia: 16,    // 2 + 2 = 4 PM
         codigo: "6am-2pm"
     },
-    // Turno 4: 8:00 AM - 4:00 PM (Botón visible: 5 AM a 10 AM)
+    // Turno 4: 8:00 AM - 4:00 PM (Acceso: 6 AM a 6 PM)
     turno4: {
         nombre: "Turno 4 (8:00 AM - 4:00 PM)",
-        horaInicio: 8,
-        horaFin: 16,
-        horaInicioGracia: 5,  // El botón aparece a las 5 AM
-        horaFinGracia: 10,    // El botón desaparece después de las 10 AM
+        horaInicioGracia: 6,  // 8 - 2 = 6 AM
+        horaFinGracia: 18,    // 4 + 2 = 6 PM
         codigo: "8am-4pm"
     },
-    // Turno 2: 2:00 PM - 10:00 PM (Botón visible: 11 AM a 5 PM)
+    // Turno 2: 2:00 PM - 10:00 PM (Acceso: 12 PM a 12 AM)
     turno2: {
         nombre: "Turno 2 (2:00 PM - 10:00 PM)",
-        horaInicio: 14,
-        horaFin: 22,
-        horaInicioGracia: 11, // El botón aparece a las 11 AM
-        horaFinGracia: 17,    // El botón desaparece después de las 5 PM (17:00)
+        horaInicioGracia: 12, // 2 PM - 2 = 12 PM
+        horaFinGracia: 24,    // 10 PM + 2 = 12 AM (medianoche, se usa 24 o 0)
         codigo: "2pm-10pm"
     },
-    // Turno 3: 10:00 PM - 6:00 AM (Botón visible: 7 PM a 1 AM)
+    // Turno 3: 10:00 PM - 6:00 AM (Acceso: 8 PM a 8 AM del día siguiente)
     turno3: {
         nombre: "Turno 3 (10:00 PM - 6:00 AM)",
-        horaInicio: 22,
-        horaFin: 6,
-        horaInicioGracia: 19, // El botón aparece a las 7 PM (19:00)
-        horaFinGracia: 25,    // El botón desaparece después de la 1 AM (25:00)
+        horaInicioGracia: 20, // 10 PM - 2 = 8 PM
+        horaFinGracia: 8,     // 6 AM + 2 = 8 AM (del día siguiente)
         codigo: "10pm-6am"
     }
 };
 
+// ... (El resto del código JavaScript)
 
-// === FUNCIÓN PARA VERIFICAR HORARIO PERMITIDO ===
 // === FUNCIÓN PARA VERIFICAR HORARIO PERMITIDO ===
 function verificarHorarioPermitido(rol) {
     const ahora = new Date();
     const horaActual = ahora.getHours();
     
     if (rol === 'Supervisor') {
-        return { permitido: true };
-    } 
-    
-    if (rol === 'Contratista') {
-        if (!esDiaLaboral()) {
-            return { permitido: false, mensaje: 'El rol Contratista solo tiene acceso de Lunes a Sábado.' };
-        }
-        if (horaActual >= 5 && horaActual < 20) {
-            return { permitido: true };
-        }
-        return { permitido: false, mensaje: 'Su acceso está limitado de 5:00 AM a 8:00 PM.' };
-    }
-    
-    if (rol === 'Lectura' || rol === 'Consulta') {
-        if (horaActual >= 5 && horaActual < 20) {
-            return { permitido: true };
-        }
-        return { permitido: false, mensaje: 'Su acceso está limitado de 5:00 AM a 8:00 PM.' };
-    }
-    
-    if (rol === 'ATTF') {
-        return verificarTurnoATTFActivo(horaActual);
-    }
-    
-    return { permitido: true };
-}
-
-// === FUNCIÓN AUXILIAR PARA VERIFICAR DÍA LABORAL ===
-function esDiaLaboral() {
-    const dia = new Date().getDay();
-    return dia >= 1 && dia <= 6;
-}
-
-// === FUNCIÓN AUXILIAR PARA VERIFICAR TURNO ATTF ACTIVO ===
-function verificarTurnoATTFActivo(horaActual) {
-    for (const turno of Object.values(TURNOS_ATTF)) {
-        if (turno.horaFinGracia < turno.horaInicioGracia) {
-            if (horaActual >= turno.horaInicioGracia || horaActual < turno.horaFinGracia) {
-                return { permitido: true };
-            }
-        } else {
-            if (horaActual >= turno.horaInicioGracia && horaActual < turno.horaFinGracia) {
-                return { permitido: true };
-            }
-        }
-    }
-    return { 
-        permitido: false, 
-        mensaje: 'No hay turnos ATTF disponibles en este horario. Los turnos son:\n- Turno 1: 4 AM - 10 AM\n- Turno 2: 11 AM - 5 PM\n- Turno 3: 8 PM - 1 AM\n- Turno 4: 5 AM - 10 AM' 
-    };
-}
-
-// Función para limpiar turnos viejos automáticamente
-async function limpiarTurnosViejos() {
-    try {
-        const fechaHoy = new Date().toISOString().split('T')[0];
-        
-        const { error } = await supabaseClient
-            .from('usuarios')
-            .update({
-                turno_actual: null,
-                turno_fecha: null,
-                turno_hora_inicio: null
-            })
-            .lt('turno_fecha', fechaHoy); // Donde turno_fecha sea menor a hoy
-        
-        if (error) {
-            console.error('Error limpiando turnos viejos:', error);
-        } else {
-            console.log('🧹 Turnos antiguos limpiados');
-        }
-    } catch (error) {
-        console.error('Error en limpieza de turnos:', error);
-    }
-}
-
-async function login() {
-    console.log('🔐 Ejecutando login...');
-    
-    // Limpiar turnos viejos al hacer login
-    await limpiarTurnosViejos();
-
-    // 1. Obtener y Validar credenciales
-    const username = document.getElementById('username').value.trim();
-    const password = document.getElementById('password').value.trim();
-
-    if (!username || !password) {
-        alert('Por favor ingrese usuario y contraseña');
-        return;
-    }
-
-    try {
-        // 🚨 AQUÍ ESTÁ EL BLOQUE DE VERIFICACIÓN ÚNICA (COMENTADO PARA PRUEBAS MÓVILES)
-        /* const { data: existingSession, error: sessionError } = await supabaseClient
-            .from('usuarios')
-            .select('*')
-            .eq('usuario', username)
-            .eq('sessionactiva', true)
-            .maybeSingle();
-
-        if (existingSession) {
-            const confirmar = confirm('Este usuario ya tiene una sesión activa en otro dispositivo. ¿Desea cerrar la sesión anterior y continuar?');
-            if (!confirmar) return;
-
-            await supabaseClient
-                .from('usuarios')
-                .update({ sessionactiva: false, sessiontoken: null })
-                .eq('usuario', username);
-        }
-        */ // 🚨 FIN DEL BLOQUE COMENTADO
-
-        // 2. Autenticar usuario
-        const { data, error } = await supabaseClient
-            .from('usuarios')
-            .select('*')
-            .eq('usuario', username)
-            .eq('password', password)
-            .eq('activo', true)
-            .single();
-
-        if (error || !data) {
-            alert('Usuario o contraseña incorrectos');
-            return;
-        }
-
-        // 3. Verificar Horario (El Salvador, UTC-6)
-        const verificacion = verificarHorarioPermitido(data.rol);
-        if (!verificacion.permitido) {
-            alert(verificacion.mensaje);
-            return;
-        }
-
-        // 4. Crear sesión en DB y en memoria
-        const sessionToken = btoa(username + Date.now() + Math.random());
-        await supabaseClient
-            .from('usuarios')
-            .update({
-                sessionactiva: true,
-                sessiontoken: sessionToken,
-                ultimaconexion: new Date().toISOString()
-            })
-            .eq('id', data.id);
-
-        currentUser = { ...data, session_token: sessionToken };
-
-         if (data.rol === 'ATTF') {
-            const fechaHoy = new Date().toISOString().split('T')[0];
-            
-            // Si tiene turno asignado del día actual, ir directo al menú
-            if (data.turno_fecha === fechaHoy && data.turno_actual) {
-                console.log('✅ Usuario tiene turno del día:', data.turno_actual);
-                currentUser.turnoAsignado = data.turno_actual;
-                currentUser.turnoNombre = TURNOS_ATTF[data.turno_actual].nombre;
-                currentUser.turno_fecha = data.turno_fecha;
-                
-                document.getElementById('currentUser').textContent = `Bienvenido, ${data.usuario} - ${currentUser.turnoNombre}`;
-                document.getElementById('userInfo').classList.remove('hidden');
-                document.getElementById('loginSection').style.display = 'none';
-                document.getElementById('tableSelectionSection').style.display = 'block';
-                
-                mostrarTablasSegunRol();
-                iniciarVerificacionSesion();
-                guardarDatosOffline();
-                setInterval(verificarCorteTurno, 5 * 60 * 1000);
-                return;
-            }
-            
-            // Si no tiene turno o es de otro día, mostrar selección
-            console.log('👷 Usuario ATTF - Mostrando selección de turno');
-            mostrarSeleccionTurno();
-            return;
-        }
-
-        // Para otros roles: continuar normal
-        document.getElementById('currentUser').textContent = `Bienvenido, ${data.usuario}`;
-        document.getElementById('userInfo').classList.remove('hidden');
-        document.getElementById('loginSection').style.display = 'none';
-        document.getElementById('tableSelectionSection').style.display = 'block';
-
-        iniciarVerificacionSesion();
-        guardarDatosOffline();
-        mostrarTablasSegunRol();
-
-        // 6. Manejar visibilidad para renovar sesión
-        document.addEventListener('visibilitychange', function() {
-            if (!document.hidden && currentUser) {
-                renovarSesion();
+        // Supervisor: acceso 24/7
+        return true;
+    } else if (rol === 'ATTF') {
+        // Para ATTF, verificar si está en el horario de GRACIA de algún turno
+        return Object.values(TURNOS_ATTF).some(turno => {
+            if (turno.horaFinGracia < turno.horaInicioGracia) {
+                // Turno nocturno (cruza medianoche)
+                // Ejemplo: 8 PM (20) a 8 AM (8)
+                return horaActual >= turno.horaInicioGracia || horaActual < turno.horaFinGracia;
+            } else {
+                // Turno diurno (no cruza medianoche)
+                // Ejemplo: 4 AM (4) a 4 PM (16)
+                return horaActual >= turno.horaInicioGracia && horaActual < turno.horaFinGracia;
             }
         });
-
-    } catch (err) {
-        console.error('Error de login:', err);
-        alert('Error de conexión. Por favor intente nuevamente.');
+    } else {
+        // Otros roles (Lectura, Contratista, Consulta): 5 AM a 8 PM
+        return horaActual >= 5 && horaActual < 20;
     }
 }
-
-
 
 // === FUNCIÓN PARA INCREMENTAR CONTADOR DE BÚSQUEDAS (SOLUCIÓN A LA CONCATENACIÓN) ===
 async function incrementarContadorBusquedas() {
@@ -1304,81 +1159,182 @@ function generarKMLString(ubicaciones) {
 }
 
 
-    
+    async function login() {
+  const username = document.getElementById('username').value.trim();
+  const password = document.getElementById('password').value.trim();
+
+  if (!username || !password) {
+    alert('Por favor ingrese usuario y contraseña');
+    return;
+  }
+
+  try {
+    const { data: existingSession, error: sessionError } = await supabaseClient
+      .from('usuarios')
+      .select('*')
+      .eq('usuario', username)
+      .eq('sessionactiva', true)
+      .maybeSingle();
+
+    if (existingSession) {
+      const confirmar = confirm('Este usuario ya tiene una sesión activa en otro dispositivo. ¿Desea cerrar la sesión anterior y continuar?');
+      if (!confirmar) return;
+
+      await supabaseClient
+        .from('usuarios')
+        .update({ sessionactiva: false, sessiontoken: null })
+        .eq('usuario', username);
+    }
+
+    const { data, error } = await supabaseClient
+      .from('usuarios')
+      .select('*')
+      .eq('usuario', username)
+      .eq('password', password)
+      .eq('activo', true)
+      .single();
+
+    if (error || !data) {
+      alert('Usuario o contraseña incorrectos');
+      return;
+    }
+
+    const sessionToken = btoa(username + Date.now() + Math.random());
+
+    await supabaseClient
+      .from('usuarios')
+      .update({
+        sessionactiva: true,
+        sessiontoken: sessionToken,
+        ultimaconexion: new Date().toISOString()
+      })
+      .eq('id', data.id);
+
+    currentUser = { ...data, session_token: sessionToken };
+
+// Verificar horario permitido
+if (!verificarHorarioPermitido(data.rol)) {
+  const horaActual = new Date().getHours();
+  let mensaje = '';
+  if (data.rol === 'ATTF') {
+    mensaje = `Su rol ATTF no tiene acceso en este horario (${horaActual}:00). Los horarios permitidos son:\n- Turno 1: 4:00 AM - 4:00 PM\n- Turno 2: 12:00 PM - 12:00 AM\n- Turno 3: 8:00 PM - 8:00 AM\n- Turno 4: 6:00 AM - 6:00 PM`;
+  } else {
+    mensaje = `Su acceso está limitado a horario de 5:00 AM a 8:00 PM. Hora actual: ${horaActual}:00`;
+  }
+  alert(mensaje);
+  await logout();
+  return;
+}
+
+// Si es rol ATTF, mostrar selección de turno
+if (data.rol === 'ATTF') {
+  mostrarSeleccionTurno();
+  return;
+}
+
+// Para otros roles, continuar normal
+document.getElementById('currentUser').textContent = `Bienvenido, ${data.usuario}`;
+document.getElementById('userInfo').classList.remove('hidden');
+document.getElementById('loginSection').style.display = 'none';
+document.getElementById('tableSelectionSection').style.display = 'block';
+
+iniciarVerificacionSesion();
+guardarDatosOffline();
+mostrarTablasSegunRol();
+
+    iniciarVerificacionSesion();
+
+    // Guardar sesión para persistencia
+    mostrarTablasSegunRol();
+
+    // Manejar visibilidad de la página
+    document.addEventListener('visibilitychange', function() {
+      if (!document.hidden && currentUser) {
+        renovarSesion();
+      }
+    });
+
+  } catch (err) {
+    console.error('Error de login:', err);
+    alert('Error de conexión');
+  }
+}
 
      // === FUNCIÓN PARA MOSTRAR LA SELECCIÓN DE TURNO (CORREGIDA) ===
 function mostrarSeleccionTurno() {
     const ahora = new Date();
     const horaActual = ahora.getHours();
+    const turnosDisponibles = [];
     const diaActual = ahora.toDateString();
     
-    // VALIDACIÓN: Si ya tiene turno asignado, ir directo al menú
-    if (currentUser.turnoAsignado) {
-        console.log('✅ Usuario ya tiene turno asignado:', currentUser.turnoAsignado);
-        document.getElementById('currentUser').textContent = `Bienvenido, ${currentUser.usuario} - ${TURNOS_ATTF[currentUser.turnoAsignado].nombre}`;
-        document.getElementById('userInfo').classList.remove('hidden');
-        document.getElementById('loginSection').style.display = 'none';
-        document.getElementById('tableSelectionSection').style.display = 'block';
-        
-        mostrarTablasSegunRol();
-        iniciarVerificacionSesion();
-        setInterval(verificarCorteTurno, 5 * 60 * 1000);
-        return;
-    }
-    
-    const turnosDisponibles = [];
     const lastSession = JSON.parse(sessionStorage.getItem('attf_last_turn'));
     
-    // SI YA ELIGIÓ UN TURNO HOY, solo permitir reingreso al mismo turno
-    if (lastSession && lastSession.dia === diaActual) {
-        const turnoAnterior = TURNOS_ATTF[lastSession.turnoKey];
+    Object.entries(TURNOS_ATTF).forEach(([key, turno]) => {
+        let esTurnoActivo = false;
         
-        let turnoAunValido = false;
-        if (turnoAnterior.horaFinGracia < turnoAnterior.horaInicioGracia) {
-            turnoAunValido = horaActual >= turnoAnterior.horaInicioGracia || horaActual < turnoAnterior.horaFinGracia;
-        } else {
-            turnoAunValido = horaActual >= turnoAnterior.horaInicioGracia && horaActual < turnoAnterior.horaFinGracia;
-        }
-        
-        if (turnoAunValido) {
-            turnosDisponibles.push({ 
-                key: lastSession.turnoKey, 
-                ...turnoAnterior, 
-                descripcion: "Continuar en tu turno de hoy" 
-            });
-        } else {
-            alert('Tu turno de hoy ha finalizado. Podrás acceder nuevamente mañana.');
-            logout();
-            return;
-        }
-    } else {
-        // PRIMER INGRESO DEL DÍA: Mostrar turnos según hora actual
-        Object.entries(TURNOS_ATTF).forEach(([key, turno]) => {
-            let puedeIngresar = false;
+        // Regla 1: Determinar si el turno está ACTIVO AHORA (usando horas de gracia)
+        if (turno.horaFinGracia < turno.horaInicioGracia) {
+            // **Turno nocturno (ej: 8 PM a 8 AM)**
+            // Para la NOCHE, la hora de gracia se extiende al día siguiente
+            const horaFinGracia = turno.horaFinGracia; // 8 AM
+            const horaInicioGracia = turno.horaInicioGracia; // 8 PM (20)
             
+            // Lógica: Está activo si (es de noche) O (es de mañana ANTES de que termine el turno de gracia)
+            esTurnoActivo = horaActual >= horaInicioGracia || horaActual < horaFinGracia;
+            
+        } else {
+            // **Turno diurno (ej: 4 AM a 4 PM)**
+            esTurnoActivo = horaActual >= turno.horaInicioGracia && horaActual < turno.horaFinGracia;
+        }
+
+        // Regla 2: Aplicar la regla de bloqueo de salto de turno
+        let puedeSeleccionar = false;
+        
+        if (lastSession && lastSession.dia === diaActual) {
+            // Si ya inició sesión hoy, solo puede reingresar a su turno anterior si sigue activo
+            if (lastSession.turnoKey === key && esTurnoActivo) {
+                puedeSeleccionar = true;
+            }
+        } else if (esTurnoActivo) {
+            // Si es un NUEVO INGRESO y el turno está activo
+            
+            // **REGLA ADICIONAL CLAVE para NUEVOS INGRESOS en turnos nocturnos:**
+            // Si el turno cruza la medianoche (es nocturno), solo permitimos el nuevo ingreso
+            // hasta la horaInicioGracia + 2 horas, para evitar que entren al final.
             if (turno.horaFinGracia < turno.horaInicioGracia) {
-                if (horaActual >= turno.horaInicioGracia) {
-                    puedeIngresar = true;
-                }
+                 // Ejemplo: 8 PM a 8 AM. Nuevo ingreso solo es permitido hasta 10 PM.
+                 if (horaActual >= turno.horaInicioGracia) { // Es de noche (8 PM a 11 PM)
+                    puedeSeleccionar = true; // Permitir el ingreso en la noche
+                 } 
+                 // NO PERMITIR nuevos ingresos en la mañana (ej: a las 7 AM),
+                 // solo reingresos si ya lo había elegido (manejado arriba en lastSession).
             } else {
-                if (horaActual >= turno.horaInicioGracia && horaActual < turno.horaFinGracia) {
-                    puedeIngresar = true;
-                }
+                 // Es diurno, si está activo, se puede seleccionar
+                 puedeSeleccionar = true;
             }
-            
-            if (puedeIngresar) {
-                turnosDisponibles.push({ key, ...turno, descripcion: "Turno disponible" });
-            }
-        });
-    }
+        }
+        
+        if (puedeSeleccionar) {
+            // Solo agregar a disponibles si pasa todas las reglas
+            const descripcion = (lastSession && lastSession.dia === diaActual && lastSession.turnoKey === key) 
+                                ? "Reingreso al turno de hoy" 
+                                : "Turno disponible";
+            turnosDisponibles.push({ key, ...turno, descripcion: descripcion });
+        }
+    });
     
     if (turnosDisponibles.length === 0) {
-        alert('No hay turnos disponibles. Ya seleccionaste un turno hoy o el horario no corresponde.');
-        logout();
+        let mensaje = 'No hay turnos disponibles en este momento.';
+        if (lastSession && lastSession.dia === diaActual) {
+            mensaje += '\nSu turno ya ha terminado por hoy (acceso bloqueado hasta mañana).';
+        }
+        alert(mensaje);
+        logout(); 
         return;
     }
     
     const loginSection = document.getElementById('loginSection');
+    // Asegúrate de que el HTML usa el array `turnosDisponibles`
     loginSection.innerHTML = `
         <img src="https://cdnimg.bnamericas.com/HFvkiBpeoLTFyPBTjytdbdohtBDrWQsnxgYaUwIlxAEFZVYKsYrwygPFBPYYlShO.png" alt="Logo CLESA" class="logo">
         <h1 class="titulo-degradado">CLESA</h1>
@@ -1393,7 +1349,7 @@ function mostrarSeleccionTurno() {
                 </div>
             `).join('')}
         </div>
-        <button class="btn btn-danger" onclick="logout()" style="margin-top: 20px;">Cancelar</button>
+        <button class="btn btn-danger" onclick="logout()" style="margin-top: 20px;">Cancelar / Cerrar Sesión</button>
     `;
 }
 
@@ -1411,139 +1367,115 @@ function guardarTurnoEnSesion(turnoKey) {
     }));
 }
 
-// === FUNCIÓN PARA SELECCIONAR EL TURNO (UNIFICADA Y CORREGIDA) ===
-async function seleccionarTurno(turnoKey) {
+// === FUNCIÓN PARA SELECCIONAR EL TURNO (MODIFICADA) ===
+function seleccionarTurno(turnoKey) {
     const turno = TURNOS_ATTF[turnoKey];
-    const ahora = new Date();
-    
-    if (currentUser.turnoAsignado) {
-        alert('Error: Ya tiene un turno asignado y activo. Debe cerrar sesión para finalizar el turno actual.');
-        return; 
-    }
-    
-    try {
-        // Guardar turno en la base de datos
-        const fechaActual = ahora.toISOString().split('T')[0]; // Formato: YYYY-MM-DD
-        const { error } = await supabaseClient
-            .from('usuarios')
-            .update({
-                turno_actual: turnoKey,
-                turno_fecha: fechaActual,
-                turno_hora_inicio: ahora.toISOString()
-            })
-            .eq('id', currentUser.id);
-        
-        if (error) {
-            console.error('Error guardando turno en BD:', error);
-            alert('Error al asignar el turno. Intente nuevamente.');
-            return;
-        }
-        
-        console.log('✅ Turno guardado en BD:', turnoKey);
-        
-    } catch (error) {
-        console.error('Error crítico guardando turno:', error);
-        alert('Error de conexión al asignar turno.');
-        return;
-    }
-    
-    // Asignar turno localmente
-    currentUser.turnoAsignado = turnoKey;
+    currentUser.turno = turnoKey;
     currentUser.turnoNombre = turno.nombre;
-    currentUser.turno_fecha = ahora.toISOString().split('T')[0];
     
-    sessionStorage.setItem('attf_last_turn', JSON.stringify({
-        turnoKey: turnoKey,
-        dia: ahora.toDateString(),
-        horaInicio: ahora.toISOString()
-    }));
+    // 💡 LLAMADA A LA FUNCIÓN PARA GUARDAR EL TURNO EN EL NAVEGADOR
+    guardarTurnoEnSesion(turnoKey);
     
-    setInterval(verificarCorteTurno, 5 * 60 * 1000);
+    // ... (El resto de la función sigue igual)
+    // Programar cierre automático de sesión al final del turno
+    programarCierreSesion(turno);
     
     document.getElementById('currentUser').textContent = `Bienvenido, ${currentUser.usuario} - ${turno.nombre}`;
     document.getElementById('userInfo').classList.remove('hidden');
     document.getElementById('loginSection').style.display = 'none';
     document.getElementById('tableSelectionSection').style.display = 'block';
     
-    console.log('🔧 Filtrando tablas según rol:', currentUser.rol);
-    mostrarTablasSegunRol();
-    
     iniciarVerificacionSesion();
     guardarDatosOffline();
+    mostrarTablasSegunRol();
+}
+
+// ... (El resto del código)
+
+function seleccionarTurno(turnoKey) {
+  const turno = TURNOS_ATTF[turnoKey];
+  currentUser.turno = turnoKey;
+  currentUser.turnoNombre = turno.nombre;
+  
+  // Programar cierre automático de sesión al final del turno
+  programarCierreSesion(turno);
+  
+  document.getElementById('currentUser').textContent = `Bienvenido, ${currentUser.usuario} - ${turno.nombre}`;
+  document.getElementById('userInfo').classList.remove('hidden');
+  document.getElementById('loginSection').style.display = 'none';
+  document.getElementById('tableSelectionSection').style.display = 'block';
+  
+  iniciarVerificacionSesion();
+  guardarDatosOffline();
+  mostrarTablasSegunRol();
 }
 
 function programarCierreSesion(turno) {
-    const ahora = new Date();
-    let fechaCierre = new Date();
-    
-    if (turno.horaFinGracia < turno.horaInicioGracia) {
-        // Turno nocturno: cierre al día siguiente
-        if (ahora.getHours() >= turno.horaInicioGracia) {
-            fechaCierre.setDate(fechaCierre.getDate() + 1);
-        }
-        fechaCierre.setHours(turno.horaFinGracia, 0, 0, 0);
-    } else {
-        // Turno diurno
-        fechaCierre.setHours(turno.horaFinGracia, 0, 0, 0);
+  const ahora = new Date();
+  let horaFin = turno.horaFin;
+  let fechaCierre = new Date();
+  
+  if (turno.horaFin < turno.horaInicio) {
+    // Turno nocturno, el cierre es al día siguiente
+    if (ahora.getHours() >= turno.horaInicio) {
+      fechaCierre.setDate(fechaCierre.getDate() + 1);
     }
-    
-    const tiempoRestante = fechaCierre.getTime() - ahora.getTime();
-    
-    if (tiempoRestante > 0) {
-        setTimeout(() => {
-            alert('Su turno ha terminado. La sesión se cerrará automáticamente.');
-            logout();
-        }, tiempoRestante);
-    }
+  }
+  
+  fechaCierre.setHours(horaFin, 0, 0, 0);
+  
+  const tiempoRestante = fechaCierre.getTime() - ahora.getTime();
+  
+  if (tiempoRestante > 0) {
+    setTimeout(() => {
+      alert('Su turno ha terminado. La sesión se cerrará automáticamente.');
+      logout();
+    }, tiempoRestante);
+  }
 }
-
-
-
-
       function mostrarTablasSegunRol() {
-    if (!currentUser || !currentUser.rol) {
-        console.log('❌ currentUser no está disponible');
-        return;
-    }
-    
-    const tableOptions = document.querySelectorAll('.table-option');
-    
-    if (currentUser.rol === 'Lectura') {
-        // Rol Lectura: Solo consultas_servicios
-        tableOptions.forEach(option => {
-            const onclick = option.getAttribute('onclick');
-            if (onclick && onclick.includes('consultas_servicios')) {
-                option.style.display = 'block';
-            } else {
-                option.style.display = 'none';
-            }
-        });
-    } else if (currentUser.rol === 'ATTF') {
-        // Rol ATTF: Solo consultas_servicios y TX y Cortes
-        tableOptions.forEach(option => {
-            const onclick = option.getAttribute('onclick');
-            if (onclick && (onclick.includes('consultas_servicios') || onclick.includes('TX y Cortes'))) {
-                option.style.display = 'block';
-            } else {
-                option.style.display = 'none';
-            }
-        });
-    } else if (currentUser.rol === 'Contratista') {
-        // Rol Contratista: Todas las tablas
-        tableOptions.forEach(option => {
-            option.style.display = 'block';
-        });
-    } else if (currentUser.rol === 'Supervisor') {
-        // Rol Supervisor: Todas las tablas
-        tableOptions.forEach(option => {
-            option.style.display = 'block';
-        });
-    } else {
-        // Rol Consulta y cualquier otro: Todas las tablas
-        tableOptions.forEach(option => {
-            option.style.display = 'block';
-        });
-    }
+     if (!currentUser || !currentUser.rol) {
+    console.log('❌ currentUser no está disponible');
+    return;
+  }
+  const tableOptions = document.querySelectorAll('.table-option');
+  
+  if (currentUser.rol === 'Lectura') {
+    // Rol Lectura: Solo consultas_servicios
+    tableOptions.forEach(option => {
+      const onclick = option.getAttribute('onclick');
+      if (!onclick.includes('consultas_servicios')) {
+        option.style.display = 'none';
+      } else {
+        option.style.display = 'block';
+      }
+    });
+  } else if (currentUser.rol === 'Contratista') {
+    // Rol Contratista: Mantener funcionalidad actual (todas las tablas)
+    tableOptions.forEach(option => {
+      option.style.display = 'block';
+    });
+  } else if (currentUser.rol === 'ATTF') {
+    // Rol ATTF: Solo consultas_servicios y TX y Cortes
+    tableOptions.forEach(option => {
+      const onclick = option.getAttribute('onclick');
+      if (onclick.includes('consultas_servicios') || onclick.includes('TX y Cortes')) {
+        option.style.display = 'block';
+      } else {
+        option.style.display = 'none';
+      }
+    });
+  } else if (currentUser.rol === 'Supervisor') {
+    // Rol Supervisor: Acceso completo a todas las tablas
+    tableOptions.forEach(option => {
+      option.style.display = 'block';
+    });
+  } else {
+    // Rol Consulta y cualquier otro: Acceso completo (todas las tablas)
+    tableOptions.forEach(option => {
+      option.style.display = 'block';
+    });
+  }
 }
 
 function iniciarVerificacionSesion() {
@@ -1587,28 +1519,27 @@ async function renovarSesion() {
     .eq('id', currentUser.id);
 }
 
-
+// === FUNCIÓN DE CIERRE DE SESIÓN UNIVERSAL ===
 async function logout() {
+    // 1. Limpiar variables de sesión del navegador
     sessionStorage.removeItem('cleca_user_session');
-    sessionStorage.removeItem('attf_last_turn');
+    sessionStorage.removeItem('attf_last_turn'); // <-- Agregamos esta línea para el caso ATTF
 
     if (currentUser) {
+        // 2. Limpiar la sesión en la base de datos (Supabase)
         await supabaseClient
             .from('usuarios')
-            .update({ 
-                sessionactiva: false, 
-                sessiontoken: null
-                // NO limpiar turno_actual, turno_fecha, turno_hora_inicio
-            })
+            .update({ sessionactiva: false, sessiontoken: null })
             .eq('id', currentUser.id);
     }
 
+    // 3. Reiniciar las variables en memoria
     currentUser = null;
     selectedTable = null;
-    window.location.reload();
+    
+    // 4. Forzar una recarga para volver a la pantalla de login/password limpia
+    window.location.reload(); 
 }
-
-
 
     function generarCamposBusqueda(config) {
       const searchGrid = document.getElementById('searchGrid');
@@ -2742,69 +2673,57 @@ function mostrarResultadosAdicionales(tabla) {
     container.innerHTML = html;
 }
 
- 
-
-function restaurarResultadosOriginales() {
-    const container = document.getElementById('searchResults');
-    if (window.contenidoOriginalBusqueda) {
-        container.innerHTML = window.contenidoOriginalBusqueda;
-        // Limpiar la variable temporal
-        delete window.contenidoOriginalBusqueda;
-    } else {
-        container.innerHTML = '<div class="result-card">Realice una nueva búsqueda</div>';
-    }
+      function restaurarResultadosOriginales() {
+  const container = document.getElementById('searchResults');
+  if (window.contenidoOriginalBusqueda) {
+    container.innerHTML = window.contenidoOriginalBusqueda;
+    // Limpiar la variable temporal
+    delete window.contenidoOriginalBusqueda;
+  } else {
+    container.innerHTML = '<div class="result-card">Realice una nueva búsqueda</div>';
+  }
 }
-
-function volverAResultadosPrincipales(tablaAnterior) {
-    // Redirigir a la nueva función que conserva los resultados
-    restaurarResultadosOriginales();
+      function volverAResultadosPrincipales(tablaAnterior) {
+  // Redirigir a la nueva función que conserva los resultados
+  restaurarResultadosOriginales();
 }
 
 
-function abrirCoordenadas(coordenadas) {
+    function abrirCoordenadas(coordenadas) {
     if (coordenadas) {
-        // CORRECCIÓN: Usar ?q= para pasar las coordenadas como query
-        // y usar la sintaxis ${} para la interpolación de la variable.
-        window.open(`http://googleusercontent.com/maps.google.com/?q=${coordenadas}`, '_blank');
+        // Usamos la sintaxis correcta para inyectar la variable en la plantilla de cadena (`${}`)
+        // y usamos el dominio estándar para la búsqueda de Google Maps (q=query)
+        window.open(`https://www.google.com/maps/search/?api=1&query=${coordenadas}`, '_blank');
+        
+        // Si quieres usar el formato antiguo con el dominio de Googleusercontent que tenías:
+        // window.open(`http://googleusercontent.com/maps.google.com/?q=${coordenadas}`, '_blank');
     }
 }
 
-
-
-function verFoto(link) {
-    if (link) window.open(link, '_blank');
-}
-
-
-
-// === FUNCIÓN PARA VERIFICAR CORTE DE TURNO ===
-function verificarCorteTurno() {
-    if (!currentUser || currentUser.rol !== 'ATTF' || !currentUser.turnoAsignado) {
-        return; 
+    function verFoto(link) {
+      if (link) window.open(link, '_blank');
     }
 
-    const ahora = new Date();
-    const horaActual = ahora.getHours();
-    const turnoActual = TURNOS_ATTF[currentUser.turnoAsignado];
-    let horaCorteReal = turnoActual.horaFin + 3; 
+function seleccionarTabla(tableName) {
+  // Verificar si el usuario tiene rol Lectura y solo permitir consultas_servicios
+  if (currentUser.rol === 'Lectura' && tableName !== 'consultas_servicios') {
+    alert('Su rol solo permite acceso a Consultas de Servicios');
+    return;
+  }
 
-    if (turnoActual.codigo === '10pm-6am') {
-        horaCorteReal = 9;
-        if (horaActual >= 1 && horaActual < 9) {
-            alert('Su turno nocturno ha finalizado. Se cerrará su sesión.');
-            logout();
-            return;
-        }
-    } else {
-        if (horaActual >= horaCorteReal) {
-            alert('Su turno ha finalizado. Se cerrará su sesión.');
-            logout();
-            return;
-        }
-    }
+  selectedTable = tableName;
+  const config = tableConfigs[tableName];
+  document.getElementById('searchTitle').innerHTML = `${config.icon} ${config.title}`;
+  generarCamposBusqueda(config);
+  document.getElementById('tableSelectionSection').style.display = 'none';
+  document.getElementById('searchSection').style.display = 'block';
 }
 
-// === FUNCIÓN PARA GUARDAR DATOS OFFLINE ===
+  </script>
+
+<script>
+
+// Cache datos importantes en localStorage (solo para datos de sesión)
 function guardarDatosOffline() {
     if (currentUser) {
         sessionStorage.setItem('cleca_user_session', JSON.stringify({
@@ -2814,171 +2733,47 @@ function guardarDatosOffline() {
     }
 }
 
-// === FUNCIÓN PARA VERIFICAR DATOS OFFLINE ===
+// Verificar datos offline al cargar
 function verificarDatosOffline() {
     const sessionData = sessionStorage.getItem('cleca_user_session');
     if (sessionData) {
         const data = JSON.parse(sessionData);
-        const tiempoTranscurrido = (Date.now() - data.timestamp) / 1000 / 60;
+        const tiempoTranscurrido = (Date.now() - data.timestamp) / 1000 / 60; // minutos
         
-        if (tiempoTranscurrido < 45) {
+        if (tiempoTranscurrido < 45) { // 45 minutos
             currentUser = data.user;
             document.getElementById('currentUser').textContent = `Bienvenido, ${data.user.usuario}`;
             document.getElementById('userInfo').classList.remove('hidden');
             document.getElementById('loginSection').style.display = 'none';
             document.getElementById('tableSelectionSection').style.display = 'block';
-            
-            // NUEVO: Filtrar tablas según rol al restaurar sesión
-            console.log('🔄 Restaurando sesión - Filtrando tablas para rol:', currentUser.rol);
-            mostrarTablasSegunRol();
-            
-            // Reiniciar verificación de corte de turno si es ATTF
-            if (currentUser.rol === 'ATTF' && currentUser.turnoAsignado) {
-                setInterval(verificarCorteTurno, 5 * 60 * 1000);
-            }
-            
             return true;
         }
     }
     return false;
 }
 
-// === FUNCIÓN DE LOGIN (CRÍTICA) ===
-async function login() {
-    console.log('🔐 Ejecutando login...');
-    
-    const username = document.getElementById('username').value.trim();
-    const password = document.getElementById('password').value.trim();
-    
-    if (!username || !password) {
-        alert('Por favor ingrese usuario y contraseña');
-        return;
-    }
-
-    try {
-        console.log('🔍 Autenticando usuario:', username);
-        
-        const { data, error } = await supabaseClient
-            .from('usuarios')
-            .select('*')
-            .eq('usuario', username)
-            .eq('password', password)
-            .eq('activo', true)
-            .single();
-
-        if (error || !data) {
-            console.error('❌ Error de autenticación:', error);
-            alert('Usuario o contraseña incorrectos');
-            return;
-        }
-
-        console.log('✅ Usuario autenticado:', data.usuario);
-
-        // Verificar horario permitido
-        const verificacion = verificarHorarioPermitido(data.rol);
-        if (!verificacion.permitido) {
-            alert(verificacion.mensaje);
-            return;
-        }
-
-        // Crear sesión
-        const sessionToken = btoa(username + Date.now() + Math.random());
-        await supabaseClient
-            .from('usuarios')
-            .update({
-                sessionactiva: true,
-                sessiontoken: sessionToken,
-                ultimaconexion: new Date().toISOString()
+// Inicializar al cargar la página
+window.addEventListener('load', function() {
+    // Registro del Service Worker
+    if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register('/sw.js')
+            .then(function(registration) {
+                console.log('SW registrado');
             })
-            .eq('id', data.id);
-
-        currentUser = { ...data, session_token: sessionToken };
-
-// Si es rol ATTF, verificar si ya tiene turno del día
-if (data.rol === 'ATTF') {
-    const fechaHoy = new Date().toISOString().split('T')[0];
-    
-    // Si tiene turno asignado del día actual, ir directo al menú
-    if (data.turno_fecha === fechaHoy && data.turno_actual) {
-        console.log('✅ Usuario tiene turno del día:', data.turno_actual);
-        currentUser.turnoAsignado = data.turno_actual;
-        currentUser.turnoNombre = TURNOS_ATTF[data.turno_actual].nombre;
-        
-        document.getElementById('currentUser').textContent = `Bienvenido, ${data.usuario} - ${currentUser.turnoNombre}`;
-        document.getElementById('userInfo').classList.remove('hidden');
-        document.getElementById('loginSection').style.display = 'none';
-        document.getElementById('tableSelectionSection').style.display = 'block';
-        
-        mostrarTablasSegunRol();
-        iniciarVerificacionSesion();
-        guardarDatosOffline();
-        setInterval(verificarCorteTurno, 5 * 60 * 1000);
-        return;
+            .catch(function(registrationError) {
+                console.log('Error SW:', registrationError);
+            });
     }
     
-    // Si no tiene turno o es de otro día, mostrar selección
-    console.log('👷 Mostrando selección de turno');
-    mostrarSeleccionTurno();
-    return;
+    // Verificar sesión offline
+if (!verificarDatosOffline()) {
+    document.getElementById('loginSection').style.display = 'block';
 }
-
-        // Para otros roles, continuar normal
-        console.log('👤 Acceso concedido - Rol:', data.rol);
-        document.getElementById('currentUser').textContent = `Bienvenido, ${data.usuario}`;
-        document.getElementById('userInfo').classList.remove('hidden');
-        document.getElementById('loginSection').style.display = 'none';
-        document.getElementById('tableSelectionSection').style.display = 'block';
-
-        iniciarVerificacionSesion();
-        guardarDatosOffline();
-        mostrarTablasSegunRol();
-
-    } catch (err) {
-        console.error('💥 Error crítico en login:', err);
-        alert('Error de conexión. Por favor intente nuevamente.');
-    }
-}
-
-// === FUNCIÓN PARA SELECCIONAR TABLA ===
-function seleccionarTabla(tableName) {
-    if (currentUser.rol === 'Lectura' && tableName !== 'consultas_servicios') {
-        alert('Su rol solo permite acceso a Consultas de Servicios');
-        return;
-    }
-
-    selectedTable = tableName; 
-    const config = tableConfigs[tableName];
-    document.getElementById('searchTitle').innerHTML = `${config.icon} ${config.title}`;
-    generarCamposBusqueda(config);
-    document.getElementById('tableSelectionSection').style.display = 'none';
-    document.getElementById('searchSection').style.display = 'block';
-}
-
-// === INICIALIZACIÓN AL CARGAR LA PÁGINA ===
-document.addEventListener('DOMContentLoaded', function() {
-    console.log('🚀 Página cargada - Inicializando sistema...');
-    
-    // 1. Verificar sesión offline
-    if (!verificarDatosOffline()) {
-        document.getElementById('loginSection').style.display = 'block';
-        console.log('📝 Mostrando formulario de login');
-    }
-    
-    // 2. Asignar evento al botón de login
-    const loginButton = document.getElementById('loginButton');
-    if (loginButton) {
-        console.log('✅ Botón de login encontrado y conectado');
-        loginButton.onclick = function() {
-            console.log('🖱️ Click detectado en botón de login');
-            login();
-        };
-    } else {
-        console.error('❌ ERROR: Botón de login NO encontrado en el DOM');
-    }
 });
-
 </script>
 </body>
 </html>
+
+
 
 
