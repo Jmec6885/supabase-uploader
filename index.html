@@ -410,7 +410,7 @@
         
         .chart-container {
             position: relative;
-            height: 400px;
+            height: 600px;
         }
         
        @media (max-width: 768px) {
@@ -477,7 +477,7 @@
         padding: 15px;
     }
     .chart-container {
-        height: 300px;
+        height: 500px;
     }
     .user-info {
         position: relative;
@@ -500,14 +500,13 @@
         background: #f0f9ff;
         border-radius: 8px;
         border: 1px solid #3b54d3;
-    } /* ← Esta llave faltaba */
-} /* ← Est
-.btn-secondary {
-    font-size: 14px !important;
-    padding: 10px 15px !important;
+    }
+    
+    .btn-secondary {
+        font-size: 14px !important;
+        padding: 10px 15px !important;
+    }
 }
-}
-
 
 
     </style>
@@ -653,58 +652,68 @@
 
     // === CONFIGURACIÓN DE TURNOS ATTF (Visibilidad del Botón) ===
 const TURNOS_ATTF = {
-    // Turno 1: 6:00 AM - 2:00 PM (Botón visible: 4 AM a 10 AM)
     turno1: {
-        nombre: "Turno 1 (6:00 AM - 2:00 PM)",
+        nombre: "6:00 AM - 2:00 PM",
+        codigo: "6am-2pm",
         horaInicio: 6,
         horaFin: 14,
-        horaInicioGracia: 4,  // El botón aparece a las 4 AM
-        horaFinGracia: 10,    // El botón desaparece después de las 10 AM
-        codigo: "6am-2pm"
+        horaInicioGracia: 4,        // Puede ingresar desde 4 AM
+        horaFinGracia: 18,          // Puede trabajar hasta 6 PM (14 + 4h)
+        ventanaBotonInicio: 4,      // Botón visible desde 4 AM
+        ventanaBotonFin: 10,        // Botón visible hasta 10 AM
+        esTurnoNocturno: false
     },
-    // Turno 4: 8:00 AM - 4:00 PM (Botón visible: 5 AM a 10 AM)
     turno4: {
-        nombre: "Turno 4 (8:00 AM - 4:00 PM)",
+        nombre: "8:00 AM - 4:00 PM",
+        codigo: "8am-4pm",
         horaInicio: 8,
         horaFin: 16,
-        horaInicioGracia: 5,  // El botón aparece a las 5 AM
-        horaFinGracia: 10,    // El botón desaparece después de las 10 AM
-        codigo: "8am-4pm"
+        horaInicioGracia: 6,        // Puede ingresar desde 6 AM
+        horaFinGracia: 20,          // Puede trabajar hasta 8 PM (16 + 4h)
+        ventanaBotonInicio: 6,
+        ventanaBotonFin: 11,
+        esTurnoNocturno: false
     },
-    // Turno 2: 2:00 PM - 10:00 PM (Botón visible: 11 AM a 5 PM)
     turno2: {
-        nombre: "Turno 2 (2:00 PM - 10:00 PM)",
+        nombre: "2:00 PM - 10:00 PM",
+        codigo: "2pm-10pm",
         horaInicio: 14,
         horaFin: 22,
-        horaInicioGracia: 10, // El botón aparece a las 11 AM
-        horaFinGracia: 18,    // El botón desaparece después de las 5 PM (17:00)
-        codigo: "2pm-10pm"
+        horaInicioGracia: 12,       // Puede ingresar desde 12 PM
+        horaFinGracia: 26,          // Puede trabajar hasta 2 AM (22 + 4h = 26, o sea 02:00)
+        ventanaBotonInicio: 12,
+        ventanaBotonFin: 17,
+        esTurnoNocturno: false
     },
-    // Turno 3: 10:00 PM - 6:00 AM (Botón visible: 7 PM a 1 AM)
     turno3: {
-        nombre: "Turno 3 (10:00 PM - 6:00 AM)",
+        nombre: "10:00 PM - 6:00 AM",
+        codigo: "10pm-6am",
         horaInicio: 22,
         horaFin: 6,
-        horaInicioGracia: 18, // El botón aparece a las 7 PM (19:00)
-        horaFinGracia: 28,    // El botón desaparece después de la 1 AM (25:00)
-        codigo: "10pm-6am"
+        horaInicioGracia: 20,       // Puede ingresar desde 8 PM
+        horaFinGracia: 9,           // Puede trabajar hasta 9 AM (6 + 3h extra por nocturno)
+        ventanaBotonInicio: 18,     // Botón visible desde 6 PM
+        ventanaBotonFin: 24,        // Botón visible hasta medianoche (23:59)
+        esTurnoNocturno: true
     }
 };
 
 
-// === FUNCIÓN PARA VERIFICAR HORARIO PERMITIDO ===
-// === FUNCIÓN PARA VERIFICAR HORARIO PERMITIDO ===
+
 function verificarHorarioPermitido(rol) {
     const ahora = new Date();
     const horaActual = ahora.getHours();
+    const diaActual = ahora.getDay(); // 0=Domingo, 1=Lunes, ..., 6=Sábado
     
+    // Supervisor: acceso 24/7
     if (rol === 'Supervisor') {
         return { permitido: true };
-    } 
+    }
     
+    // Contratista: Lunes-Sábado, 5 AM - 8 PM
     if (rol === 'Contratista') {
-        if (!esDiaLaboral()) {
-            return { permitido: false, mensaje: 'El rol Contratista solo tiene acceso de Lunes a Sábado.' };
+        if (diaActual === 0) { // Domingo bloqueado
+            return { permitido: false, mensaje: 'El rol Contratista no tiene acceso los domingos.' };
         }
         if (horaActual >= 5 && horaActual < 20) {
             return { permitido: true };
@@ -712,258 +721,172 @@ function verificarHorarioPermitido(rol) {
         return { permitido: false, mensaje: 'Su acceso está limitado de 5:00 AM a 8:00 PM.' };
     }
     
-    if (rol === 'Lectura' || rol === 'Consulta' || rol === 'Poda') {
+    // Lectura: 5 AM - 6 PM
+    if (rol === 'Lectura') {
+        if (horaActual >= 5 && horaActual < 18) {
+            return { permitido: true };
+        }
+        return { permitido: false, mensaje: 'Su acceso está limitado de 5:00 AM a 6:00 PM.' };
+    }
+    
+    // Consulta: 5 AM - 8 PM
+    if (rol === 'Consulta') {
         if (horaActual >= 5 && horaActual < 20) {
             return { permitido: true };
         }
         return { permitido: false, mensaje: 'Su acceso está limitado de 5:00 AM a 8:00 PM.' };
     }
     
+    // Poda: 5 AM - 6 PM (validación adicional de descanso en otra función)
+    if (rol === 'Poda') {
+        if (horaActual >= 5 && horaActual < 18) {
+            return { permitido: true };
+        }
+        return { permitido: false, mensaje: 'Su acceso está limitado de 5:00 AM a 6:00 PM.' };
+    }
+    
+    // ATTF: Validación compleja por turnos (se maneja en otra función)
     if (rol === 'ATTF') {
-        return verificarTurnoATTFActivo(horaActual);
+        return { permitido: true }; // Validación detallada en loginATTF()
     }
     
+    // Rol no reconocido
     return { permitido: true };
 }
 
 
-// === FUNCIÓN AUXILIAR PARA VERIFICAR DÍA LABORAL ===
-function esDiaLaboral() {
-    const dia = new Date().getDay();
-    return dia >= 1 && dia <= 6;
-}
 
-// === FUNCIÓN AUXILIAR PARA VERIFICAR TURNO ATTF ACTIVO ===
-function verificarTurnoATTFActivo(horaActual) {
-    for (const turno of Object.values(TURNOS_ATTF)) {
-        if (turno.horaFinGracia < turno.horaInicioGracia) {
-            if (horaActual >= turno.horaInicioGracia || horaActual < turno.horaFinGracia) {
-                return { permitido: true };
-            }
-        } else {
-            if (horaActual >= turno.horaInicioGracia && horaActual < turno.horaFinGracia) {
-                return { permitido: true };
-            }
-        }
-    }
-    return { 
-        permitido: false, 
-        mensaje: 'No hay turnos ATTF disponibles en este horario. Los turnos son:\n- Turno 1: 4 AM - 10 AM\n- Turno 2: 11 AM - 5 PM\n- Turno 3: 8 PM - 1 AM\n- Turno 4: 5 AM - 10 AM' 
-    };
-}
 
-// Función para limpiar turnos viejos automáticamente
-async function limpiarTurnosViejos() {
-    try {
-        const fechaHoy = new Date().toISOString().split('T')[0];
-        
-        const { error } = await supabaseClient
+async function verificarInactividad(userData) {
+    if (!userData.ultima_actividad) {
+        // Primera vez, actualizar timestamp
+        await supabaseClient
             .from('usuarios')
-            .update({
-                turno_actual: null,
-                turno_fecha: null,
-                turno_hora_inicio: null
-            })
-            .lt('turno_fecha', fechaHoy); // Donde turno_fecha sea menor a hoy
-        
-        if (error) {
-            console.error('Error limpiando turnos viejos:', error);
-        } else {
-            console.log('🧹 Turnos antiguos limpiados');
-        }
-    } catch (error) {
-        console.error('Error en limpieza de turnos:', error);
+            .update({ ultima_actividad: new Date().toISOString() })
+            .eq('id', userData.id);
+        return { inactivo: false };
     }
-}
-
-
-// Función para limpiar días de descanso viejos automáticamente
-async function limpiarDiasDescansoViejos() {
-    try {
-        const fechaHoy = new Date().toISOString().split('T')[0];
-        
-        const { error } = await supabaseClient
+    
+    const ahora = new Date();
+    const ultimaActividad = new Date(userData.ultima_actividad);
+    const diasInactivo = Math.floor((ahora - ultimaActividad) / (1000 * 60 * 60 * 24));
+    
+    console.log(`⏰ Días sin actividad: ${diasInactivo}`);
+    
+    // Supervisor sin límite
+    if (userData.rol === 'Supervisor') {
+        return { inactivo: false };
+    }
+    
+    // Todos los demás roles: 5 días
+    if (diasInactivo >= 5) {
+        // Bloquear usuario
+        await supabaseClient
             .from('usuarios')
-            .update({
-                dias_descanso: null,
-                descanso_fecha_fin: null
+            .update({ 
+                bloqueado: true,
+                razon_bloqueo: `Inactividad de ${diasInactivo} días`,
+                sessionactiva: false,
+                sessiontoken: null
             })
-            .lt('descanso_fecha_fin', fechaHoy); // Donde descanso_fecha_fin sea menor a hoy
+            .eq('id', userData.id);
         
-        if (error) {
-            console.error('Error limpiando días de descanso viejos:', error);
-        } else {
-            console.log('🧹 Días de descanso antiguos limpiados');
-        }
-    } catch (error) {
-        console.error('Error en limpieza de días de descanso:', error);
+        return { 
+            inactivo: true, 
+            dias: diasInactivo,
+            mensaje: `Usuario bloqueado por inactividad de ${diasInactivo} días.\n\nContacte al administrador para desbloquear su cuenta.`
+        };
     }
+    
+    return { inactivo: false };
 }
 
-// Función para verificar si hoy es día de descanso
+
+
 function verificarDiaDescanso(userData) {
-    if (!userData.dias_descanso) return false;
+    if (!userData.descanso_fecha_inicio || !userData.descanso_fecha_fin) {
+        return false;
+    }
     
-    const hoy = new Date().getDay(); // 0=Domingo, 1=Lunes, ..., 6=Sábado
-    const diasDescanso = userData.dias_descanso.split(',').map(d => parseInt(d));
+    const ahora = new Date();
+    const horaActual = ahora.getHours();
+    const fechaHoy = ahora.toISOString().split('T')[0];
     
-    return diasDescanso.includes(hoy);
-}
-
-// Función para mostrar selección de días de descanso
-function mostrarSeleccionDiasDescanso() {
-    const loginSection = document.getElementById('loginSection');
-    const esPoda = currentUser.rol === 'Poda';
-    const titulo = esPoda ? 'Seleccione sus Días de Descanso' : `Seleccione sus Días de Descanso - ${currentUser.turnoNombre}`;
+    // Verificar si hoy está en el rango de descanso
+    if (fechaHoy < userData.descanso_fecha_inicio || fechaHoy > userData.descanso_fecha_fin) {
+        console.log('✅ Fuera del período de descanso');
+        return false;
+    }
     
-    loginSection.innerHTML = `
-        <img src="https://cdnimg.bnamericas.com/HFvkiBpeoLTFyPBTjytdbdohtBDrWQsnxgYaUwIlxAEFZVYKsYrwygPFBPYYlShO.png" alt="Logo CLESA" class="logo">
-        <h1 class="titulo-degradado">CLESA</h1>
-        <p class="subtitulo">${titulo}</p>
-        
-        <div style="background: #fff3cd; padding: 15px; border-radius: 10px; margin-bottom: 20px; border-left: 4px solid #ffc107;">
-            <strong>⚠️ Importante:</strong> Seleccione exactamente 2 días consecutivos para descansar esta semana.
-        </div>
-        
-        <div class="table-selector" id="diasSelector">
-            <div class="table-option dia-option" data-dia="1" onclick="toggleDiaDescanso(1)">
-                <span class="table-icon">📅</span>
-                <div class="table-title">Lunes</div>
-            </div>
-            <div class="table-option dia-option" data-dia="2" onclick="toggleDiaDescanso(2)">
-                <span class="table-icon">📅</span>
-                <div class="table-title">Martes</div>
-            </div>
-            <div class="table-option dia-option" data-dia="3" onclick="toggleDiaDescanso(3)">
-                <span class="table-icon">📅</span>
-                <div class="table-title">Miércoles</div>
-            </div>
-            <div class="table-option dia-option" data-dia="4" onclick="toggleDiaDescanso(4)">
-                <span class="table-icon">📅</span>
-                <div class="table-title">Jueves</div>
-            </div>
-            <div class="table-option dia-option" data-dia="5" onclick="toggleDiaDescanso(5)">
-                <span class="table-icon">📅</span>
-                <div class="table-title">Viernes</div>
-            </div>
-            <div class="table-option dia-option" data-dia="6" onclick="toggleDiaDescanso(6)">
-                <span class="table-icon">📅</span>
-                <div class="table-title">Sábado</div>
-            </div>
-            <div class="table-option dia-option" data-dia="0" onclick="toggleDiaDescanso(0)">
-                <span class="table-icon">📅</span>
-                <div class="table-title">Domingo</div>
-            </div>
-        </div>
-        
-        <button class="btn" onclick="confirmarDiasDescanso()" style="margin-top: 20px;">
-            ✅ Confirmar Días de Descanso
-        </button>
-        <button class="btn btn-danger" onclick="logout()" style="margin-top: 10px;">
-            Cancelar
-        </button>
-    `;
+    // === EXCEPCIÓN: TURNO NOCTURNO QUE TERMINA EN PRIMER DÍA DE DESCANSO ===
+    if (userData.rol === 'ATTF' && fechaHoy === userData.descanso_fecha_inicio) {
+        if (userData.turno_hoy === 'turno3') {
+            // Si estamos en ventana de gracia del turno nocturno (hasta 9 AM)
+            if (horaActual >= 0 && horaActual < 9) {
+                console.log('🌙 Permitiendo terminar turno nocturno en primer día de descanso');
+                return false; // NO es descanso aún, puede terminar turno
+            }
+        }
+    }
     
-    // Inicializar array global para días seleccionados
-    window.diasDescansoSeleccionados = [];
+    // === EXCEPCIÓN: TURNO NOCTURNO QUE INICIA EN ÚLTIMO DÍA DE DESCANSO ===
+    if (userData.rol === 'ATTF' && fechaHoy === userData.descanso_fecha_fin) {
+        if (userData.turno_regreso === 'turno3') {
+            // Si estamos en ventana de ingreso del turno nocturno (desde 18:00)
+            if (horaActual >= 18) {
+                console.log('🌙 Permitiendo ingresar para turno nocturno en último día de descanso');
+                return false; // NO es descanso, puede ingresar
+            }
+        }
+    }
+    
+    // Regla general: Está en día de descanso
+    console.log(`📅 Día de descanso activo: ${fechaHoy}`);
+    return true;
 }
 
 
-// Función para toggle de selección de días
-function toggleDiaDescanso(dia) {
-    const index = window.diasDescansoSeleccionados.indexOf(dia);
-    const elemento = document.querySelector(`.dia-option[data-dia="${dia}"]`);
+function validarVentanaTurno(codigoTurno, horaActual) {
+    const turno = TURNOS_ATTF[codigoTurno];
+    if (!turno) {
+        console.error('❌ Turno no encontrado:', codigoTurno);
+        return false;
+    }
     
-    if (index > -1) {
-        // Deseleccionar
-        window.diasDescansoSeleccionados.splice(index, 1);
-        elemento.classList.remove('selected');
+    // Turno nocturno (cruza medianoche)
+    if (turno.esTurnoNocturno) {
+        // Ventana: 20:00 → 09:00 (día siguiente)
+        if (horaActual >= turno.horaInicioGracia || horaActual < turno.horaFinGracia) {
+            console.log(`✅ Dentro de ventana nocturna: ${turno.nombre}`);
+            return true;
+        }
     } else {
-        // Verificar límite de 2 días
-        if (window.diasDescansoSeleccionados.length >= 2) {
-            alert('Solo puedes seleccionar 2 días de descanso');
-            return;
-        }
+        // Turno diurno normal
+        let horaFin = turno.horaFinGracia;
         
-        // Seleccionar
-        window.diasDescansoSeleccionados.push(dia);
-        elemento.classList.add('selected');
+        // Si la gracia cruza medianoche (ej: turno 14-22 con gracia hasta 02:00)
+        if (horaFin >= 24) {
+            if (horaActual >= turno.horaInicioGracia || horaActual < (horaFin - 24)) {
+                console.log(`✅ Dentro de ventana con cruce de medianoche: ${turno.nombre}`);
+                return true;
+            }
+        } else {
+            if (horaActual >= turno.horaInicioGracia && horaActual < horaFin) {
+                console.log(`✅ Dentro de ventana diurna: ${turno.nombre}`);
+                return true;
+            }
+        }
     }
+    
+    console.log(`❌ Fuera de ventana: ${turno.nombre} (hora actual: ${horaActual})`);
+    return false;
 }
 
-// Función para confirmar días de descanso
-async function confirmarDiasDescanso() {
-    if (window.diasDescansoSeleccionados.length !== 2) {
-        alert('Debe seleccionar exactamente 2 días de descanso');
-        return;
-    }
-    
-    // Ordenar días y verificar que sean consecutivos
-    const diasOrdenados = window.diasDescansoSeleccionados.sort((a, b) => a - b);
-    
-    // Permitir Domingo(0) + Lunes(1) como consecutivos
-    const sonConsecutivos = 
-        (diasOrdenados[1] - diasOrdenados[0] === 1) || 
-        (diasOrdenados[0] === 0 && diasOrdenados[1] === 6);
-    
-    if (!sonConsecutivos) {
-        alert('Los días de descanso deben ser consecutivos (ej: Lunes-Martes, Sábado-Domingo)');
-        return;
-    }
-    
-    try {
-        // Calcular fecha de fin (2 días después de hoy)
-        const fechaFin = new Date();
-        fechaFin.setDate(fechaFin.getDate() + 2);
-        const fechaFinStr = fechaFin.toISOString().split('T')[0];
-        
-        // Guardar en la base de datos
-        const { error } = await supabaseClient
-            .from('usuarios')
-            .update({
-                dias_descanso: diasOrdenados.join(','),
-                descanso_fecha_fin: fechaFinStr,
-                ultimaconexion: new Date().toISOString()
-            })
-            .eq('id', currentUser.id);
-        
-        if (error) {
-            console.error('Error guardando días de descanso:', error);
-            alert('Error al guardar los días de descanso. Intente nuevamente.');
-            return;
-        }
-        
-        console.log('✅ Días de descanso guardados:', diasOrdenados);
-        
-        // Actualizar usuario actual
-        currentUser.dias_descanso = diasOrdenados.join(',');
-        currentUser.descanso_fecha_fin = fechaFinStr;
-        
-        // Redirigir al menú principal
-        document.getElementById('currentUser').textContent = `Bienvenido, ${currentUser.usuario}` + 
-            (currentUser.turnoNombre ? ` - ${currentUser.turnoNombre}` : '');
-        document.getElementById('userInfo').classList.remove('hidden');
-        document.getElementById('loginSection').style.display = 'none';
-        document.getElementById('tableSelectionSection').style.display = 'block';
-        
-        mostrarTablasSegunRol();
-        iniciarVerificacionSesion();
-        guardarDatosOffline();
-        
-        if (currentUser.rol === 'ATTF') {
-            setInterval(verificarCorteTurno, 5 * 60 * 1000);
-        }
-        
-    } catch (error) {
-        console.error('Error crítico guardando días de descanso:', error);
-        alert('Error de conexión al guardar días de descanso.');
-    }
-}
 
 async function login() {
     console.log('🔐 Ejecutando login...');
     
-    // Limpiar datos viejos al hacer login
+    // Limpiar datos viejos
     await limpiarTurnosViejos();
     await limpiarDiasDescansoViejos();
 
@@ -976,7 +899,7 @@ async function login() {
     }
 
     try {
-        // Autenticar usuario
+        // 1. Autenticar usuario
         const { data, error } = await supabaseClient
             .from('usuarios')
             .select('*')
@@ -989,100 +912,61 @@ async function login() {
             alert('Usuario o contraseña incorrectos');
             return;
         }
+        
+        // 2. Verificar bloqueo manual
+        if (data.bloqueado === true) {
+            alert(`🚫 Usuario bloqueado\n\nMotivo: ${data.razon_bloqueo || 'No especificado'}\n\nContacte al administrador para desbloquear su cuenta.`);
+            return;
+        }
+        
+        // 3. Verificar inactividad (bloquea automáticamente si >= 5 días)
+        const checkInactividad = await verificarInactividad(data);
+        if (checkInactividad.inactivo) {
+            alert(checkInactividad.mensaje);
+            return;
+        }
 
-        // Verificar Horario
+        // 4. Verificar horario permitido (validación básica por rol)
         const verificacion = verificarHorarioPermitido(data.rol);
         if (!verificacion.permitido) {
             alert(verificacion.mensaje);
             return;
         }
 
-        // Crear sesión
+        // 5. Crear sesión
         const sessionToken = btoa(username + Date.now() + Math.random());
         await supabaseClient
             .from('usuarios')
             .update({
                 sessionactiva: true,
                 sessiontoken: sessionToken,
-                ultimaconexion: new Date().toISOString()
+                ultimaconexion: new Date().toISOString(),
+                ultima_actividad: new Date().toISOString() // Actualizar timestamp
             })
             .eq('id', data.id);
 
         currentUser = { ...data, session_token: sessionToken };
+        
+        // 6. Actualizar timestamp de actividad
+        await supabaseClient
+            .from('usuarios')
+            .update({ ultima_actividad: new Date().toISOString() })
+            .eq('id', data.id);
 
-        // === MANEJO PARA ROL ATTF ===
+        // 7. Redirigir según rol
+        console.log(`👤 Rol detectado: ${data.rol}`);
+        
         if (data.rol === 'ATTF') {
-            const fechaHoy = new Date().toISOString().split('T')[0];
-            
-            // Verificar si tiene turno del día
-            if (data.turno_fecha === fechaHoy && data.turno_actual) {
-                console.log('✅ Usuario ATTF tiene turno del día:', data.turno_actual);
-                currentUser.turnoAsignado = data.turno_actual;
-                currentUser.turnoNombre = TURNOS_ATTF[data.turno_actual].nombre;
-                currentUser.turno_fecha = data.turno_fecha;
-                
-                // Verificar días de descanso
-                if (verificarDiaDescanso(data)) {
-                    alert('Hoy es uno de tus días de descanso. No puedes acceder al sistema.');
-                    logout();
-                    return;
-                }
-                
-                // Verificar si necesita elegir días de descanso
-                if (!data.descanso_fecha_fin || data.descanso_fecha_fin < fechaHoy) {
-                    mostrarSeleccionDiasDescanso();
-                    return;
-                }
-                
-                // Acceso directo al menú
-                document.getElementById('currentUser').textContent = `Bienvenido, ${data.usuario} - ${currentUser.turnoNombre}`;
-                document.getElementById('userInfo').classList.remove('hidden');
-                document.getElementById('loginSection').style.display = 'none';
-                document.getElementById('tableSelectionSection').style.display = 'block';
-                
-                mostrarTablasSegunRol();
-                iniciarVerificacionSesion();
-                guardarDatosOffline();
-                setInterval(verificarCorteTurno, 5 * 60 * 1000);
-                return;
-            }
-            
-            // Si no tiene turno, mostrar selección de turno
-            console.log('👷 Usuario ATTF - Mostrando selección de turno');
-            mostrarSeleccionTurno();
+            loginATTF(data); // Nueva función (próximo bloque)
             return;
         }
-
-        // === MANEJO PARA ROL PODA ===
+        
         if (data.rol === 'Poda') {
-            const fechaHoy = new Date().toISOString().split('T')[0];
-            
-            // Verificar si es día de descanso
-            if (verificarDiaDescanso(data)) {
-                alert('Hoy es uno de tus días de descanso. No puedes acceder al sistema.');
-                logout();
-                return;
-            }
-            
-            // Verificar si necesita elegir días de descanso
-            if (!data.descanso_fecha_fin || data.descanso_fecha_fin < fechaHoy) {
-                mostrarSeleccionDiasDescanso();
-                return;
-            }
-            
-            // Acceso directo al menú
-            document.getElementById('currentUser').textContent = `Bienvenido, ${data.usuario} (Poda)`;
-            document.getElementById('userInfo').classList.remove('hidden');
-            document.getElementById('loginSection').style.display = 'none';
-            document.getElementById('tableSelectionSection').style.display = 'block';
-            
-            mostrarTablasSegunRol();
-            iniciarVerificacionSesion();
-            guardarDatosOffline();
+            loginPoda(data); // Nueva función (próximo bloque)
             return;
         }
 
-        // Para otros roles: continuar normal
+        // Para otros roles: acceso directo
         document.getElementById('currentUser').textContent = `Bienvenido, ${data.usuario}`;
         document.getElementById('userInfo').classList.remove('hidden');
         document.getElementById('loginSection').style.display = 'none';
@@ -1092,17 +976,961 @@ async function login() {
         guardarDatosOffline();
         mostrarTablasSegunRol();
 
-        document.addEventListener('visibilitychange', function() {
-            if (!document.hidden && currentUser) {
-                renovarSesion();
-            }
-        });
-
     } catch (err) {
         console.error('Error de login:', err);
         alert('Error de conexión. Por favor intente nuevamente.');
     }
 }
+
+    // ========================================
+// 🆕 FUNCIÓN AUXILIAR: Validar fecha máxima de descanso
+// ========================================
+function validarFechaDescansoMaxima(fechaInicio, fechaHoy) {
+    const inicio = new Date(fechaInicio + 'T00:00:00');
+    const hoy = new Date(fechaHoy + 'T00:00:00');
+    
+    // Calcular diferencia en días
+    const diffMs = inicio - hoy;
+    const diffDias = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+    
+    // Día 1 = HOY, Día 6 = máximo permitido
+    // diffDias = 1 es mañana (día 2)
+    // diffDias = 5 es día 6 (máximo)
+    if (diffDias < 1 || diffDias > 5) {
+        return {
+            valido: false,
+            mensaje: 'El día de inicio de descanso debe ser entre mañana (día 2) y máximo 5 días después (día 6).'
+        };
+    }
+    
+    return { valido: true };
+}
+
+async function loginATTF(userData) {
+    console.log('👷 Iniciando flujo ATTF');
+    
+    const ahora = new Date();
+    const fechaHoy = ahora.toISOString().split('T')[0];
+    const horaActual = ahora.getHours();
+    
+    // 1. Verificar si está en día de descanso
+    if (verificarDiaDescanso(userData)) {
+        alert('Hoy es uno de tus días de descanso. No puedes acceder al sistema.');
+        logout();
+        return;
+    }
+    
+    // 2. Verificar si necesita configuración inicial o reset
+    const diasSinActividad = calcularDiasSinActividad(userData.ultima_actividad);
+    
+    // 🎯 CAMBIO: Primera vez o post-bloqueo (con opción descanso flexible)
+    if (!userData.estado_ciclo || userData.estado_ciclo === 'primera_vez' || diasSinActividad >= 1) {
+        console.log('🔧 Requiere configuración inicial - Descanso flexible permitido');
+        mostrarConfiguracionInicialATTF();
+        return;
+    }
+    
+    // 3. Verificar si tiene turno programado para HOY
+    if (userData.turno_hoy && userData.fecha_turno_hoy === fechaHoy) {
+        console.log(`✅ Turno de hoy: ${userData.turno_hoy}`);
+        
+        // Validar ventana horaria
+        if (!validarVentanaTurno(userData.turno_hoy, horaActual)) {
+            alert(`No estás en el horario de tu turno programado.\n\nTurno: ${TURNOS_ATTF[userData.turno_hoy].nombre}\n\nContacta al administrador si necesitas corregir tu turno.`);
+            logout();
+            return;
+        }
+        
+        // Verificar contador para determinar acción
+        const contadorTurnos = parseInt(userData.contador_turnos) || 0;
+        
+        if (contadorTurnos >= 5) {
+            // Día 5: Forzar descanso automático
+            console.log('📅 Día 5: Descanso automático obligatorio');
+            mostrarForzarDescansoATTF();
+            return;
+        } else {
+            // 🎯 CAMBIO: Días 1-4: Sin opción descanso (solo turnos)
+            console.log(`📊 Día ${contadorTurnos + 1}: Programar turno correlativo`);
+            mostrarProgramarTurnoManana(false); // Sin opción descanso
+            return;
+        }
+    }
+    
+    // 4. Si llegó aquí, necesita configuración
+    console.log('⚠️ Sin turno programado, requiere configuración');
+    mostrarConfiguracionInicialATTF();
+}
+
+
+
+
+function calcularDiasSinActividad(ultimaActividad) {
+    if (!ultimaActividad) return 999; // Sin registro previo
+    
+    const ahora = new Date();
+    const ultima = new Date(ultimaActividad);
+    const diffMs = ahora - ultima;
+    const diffDias = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+    
+    return diffDias;
+}
+
+
+
+function mostrarConfiguracionInicialATTF() {
+    const ahora = new Date();
+    const horaActual = ahora.getHours();
+    
+    // Determinar qué turnos están disponibles según la hora
+    const turnosDisponibles = [];
+    
+    Object.entries(TURNOS_ATTF).forEach(([key, turno]) => {
+        // Verificar si el botón está visible en este horario
+        if (turno.esTurnoNocturno) {
+            // Turno nocturno: 18:00 - 23:59
+            if (horaActual >= turno.ventanaBotonInicio && horaActual < 24) {
+                turnosDisponibles.push({ key, ...turno });
+            }
+        } else {
+            // Turnos diurnos
+            if (horaActual >= turno.ventanaBotonInicio && horaActual < turno.ventanaBotonFin) {
+                turnosDisponibles.push({ key, ...turno });
+            }
+        }
+    });
+    
+    if (turnosDisponibles.length === 0) {
+        alert('No hay turnos disponibles en este horario.\n\nIntenta ingresar en el horario de tu turno correspondiente.');
+        logout();
+        return;
+    }
+    
+    const loginSection = document.getElementById('loginSection');
+    loginSection.innerHTML = `
+        <img src="https://cdnimg.bnamericas.com/HFvkiBpeoLTFyPBTjytdbdohtBDrWQsnxgYaUwIlxAEFZVYKsYrwygPFBPYYlShO.png" alt="Logo CLESA" class="logo">
+        <h1 class="titulo-degradado">CLESA</h1>
+        <p class="subtitulo">Configura tu Calendario de Trabajo</p>
+        
+        <div style="background: #e3f2fd; padding: 15px; border-radius: 10px; margin-bottom: 20px; border-left: 4px solid #2196f3;">
+            <strong>Paso 1 de 2:</strong> Selecciona tu turno de HOY
+        </div>
+        
+        <div class="form-group">
+            <label>Turno de HOY:</label>
+            <select id="turnoHoy" class="form-control" style="width: 100%; padding: 12px; border-radius: 8px; border: 2px solid #e1e5e9; font-size: 16px;">
+                <option value="">-- Seleccione su turno --</option>
+                ${turnosDisponibles.map(t => `<option value="${t.key}">${t.nombre}</option>`).join('')}
+            </select>
+        </div>
+        
+        <button class="btn" onclick="confirmarTurnoHoyATTF()" style="margin-top: 20px;">
+            Continuar al Paso 2 →
+        </button>
+        <button class="btn btn-danger" onclick="logout()" style="margin-top: 10px;">
+            Cancelar
+        </button>
+    `;
+}
+
+
+async function confirmarTurnoHoyATTF() {
+    const turnoHoyKey = document.getElementById('turnoHoy').value;
+
+    if (!turnoHoyKey) {
+        alert('Por favor seleccione su turno de hoy');
+        return;
+    }
+
+    // --- INICIO: CAMBIO 1 para ELIMINAR CONFIRMACIÓN ---
+    
+    // Obtener la cantidad de turnos que el usuario pudo seleccionar en el Paso 1
+    // (Asumimos que solo puede seleccionar un turno si solo hay una opción)
+    const selectElement = document.getElementById('turnoHoy');
+    const numOpciones = selectElement.options.length - 1; // Restamos la opción "-- Seleccione su turno --"
+    
+    let confirmar = true; // Por defecto, NO pide confirmación (asumimos que está bien)
+
+    if (numOpciones > 1) {
+        // Si hay más de una opción disponible, SÍ pedimos confirmación (lógica actual)
+        const turnoHoy = TURNOS_ATTF[turnoHoyKey];
+        confirmar = confirm(
+            `¿Confirmas que tu turno de HOY es:\n\n${turnoHoy.nombre}?\n\n✅ SÍ - Continuar\n❌ NO - Corregir`
+        );
+    }
+    
+    // Si la confirmación fue cancelada (o si había varias opciones y el usuario dijo NO)
+    if (!confirmar) {
+        return;
+    }
+
+    // --- FIN: CAMBIO 1 ---
+    
+    // Guardar temporalmente en memoria
+    window.turnoHoySeleccionado = turnoHoyKey;
+
+    // Pasar al paso 2
+    mostrarProgramarTurnoManana(true); // Con opción descanso (primera vez)
+}
+
+
+// ========================================
+// 🔧 FUNCIÓN AUXILIAR CORREGIDA: Obtener turnos consecutivos
+// ========================================
+function getTurnoConsecutivo(turnoHoyKey) {
+    // Definir todos los turnos consecutivos bloqueados para cada turno
+    const relaciones = {
+       "turno3": ["turno1", "turno4"]  // Si trabajas 10-6, NO puedes 6-2 ni 8-4
+    };
+    
+    // Retornar array de turnos bloqueados (o array vacío si no hay)
+    return relaciones[turnoHoyKey] || [];
+}
+
+function mostrarProgramarTurnoManana(mostrarOpcionDescanso) {
+    const loginSection = document.getElementById('loginSection');
+    
+    // 🎯 CAMBIO: Determinar el título según el contexto
+    let paso, instruccion;
+    const contadorActual = parseInt(currentUser?.contador_turnos) || 0;
+    
+    if (mostrarOpcionDescanso) {
+        // Primera vez - Con opción descanso
+        paso = "Paso 2 de 2";
+        instruccion = "Selecciona tu turno de MAÑANA o configura DESCANSO";
+    } else {
+        // Días 1-4 - Sin opción descanso
+        paso = `Programar Turno (Día ${contadorActual + 1} → ${contadorActual + 2})`;
+        instruccion = "Selecciona tu turno de MAÑANA";
+    }
+    
+    // Obtener el turno de HOY seleccionado
+    const turnoHoyKey = window.turnoHoySeleccionado || currentUser.turno_hoy;
+    
+    // 🎯 CAMBIO: Obtener array de turnos consecutivos bloqueados
+    const turnosConsecutivos = getTurnoConsecutivo(turnoHoyKey);
+    
+    let opcionesHTML = '';
+    
+    // Generar opciones de turnos
+    Object.entries(TURNOS_ATTF).forEach(([key, turno]) => {
+        // 🎯 CAMBIO: Verificar si está en el array de consecutivos
+        if (turnosConsecutivos.includes(key)) {
+            opcionesHTML += `<option value="${key}" disabled style="background: #ffdddd; color: #999;">${turno.nombre} (🚫 Turno Consecutivo)</option>`;
+        } else {
+            opcionesHTML += `<option value="${key}">${turno.nombre}</option>`;
+        }
+    });
+    
+    // 🎯 CAMBIO: Solo agregar opción descanso si está permitido (primera vez)
+    if (mostrarOpcionDescanso) {
+        opcionesHTML += `<option value="descanso" style="background: #fff3cd; font-weight: bold;">🏖️ DESCANSO</option>`;
+    }
+    
+    loginSection.innerHTML = `
+        <img src="https://cdnimg.bnamericas.com/HFvkiBpeoLTFyPBTjytdbdohtBDrWQsnxgYaUwIlxAEFZVYKsYrwygPFBPYYlShO.png" alt="Logo CLESA" class="logo">
+        <h1 class="titulo-degradado">CLESA</h1>
+        <p class="subtitulo">${paso}</p>
+        
+        <div style="background: #e3f2fd; padding: 15px; border-radius: 10px; margin-bottom: 20px; border-left: 4px solid #2196f3;">
+            <strong>${instruccion}</strong>
+        </div>
+        
+        <div class="form-group">
+            <label>Turno de MAÑANA:</label>
+            <select id="turnoManana" class="form-control" onchange="verificarSeleccionDescanso()" style="width: 100%; padding: 12px; border-radius: 8px; border: 2px solid #e1e5e9; font-size: 16px;">
+                <option value="">-- Seleccione --</option>
+                ${opcionesHTML}
+            </select>
+        </div>
+        
+        <div id="seccionDescanso" style="display: none; margin-top: 20px;"></div>
+        
+        <button class="btn" id="btnConfirmarManana" onclick="confirmarTurnoMananaATTF()" style="margin-top: 20px; display: none;">
+            ✅ Confirmar y Acceder
+        </button>
+        <button class="btn btn-danger" onclick="logout()" style="margin-top: 10px;">
+            Cancelar
+        </button>
+    `;
+}
+
+
+
+
+function verificarSeleccionDescanso() {
+    const turnoManana = document.getElementById('turnoManana').value;
+    const seccionDescanso = document.getElementById('seccionDescanso');
+    const btnConfirmar = document.getElementById('btnConfirmarManana');
+    
+    if (turnoManana === 'descanso') {
+        // 🎯 CAMBIO: Calcular límites de fechas (día 2 hasta día 6)
+        const ahora = new Date();
+        const fechaHoy = ahora.toISOString().split('T')[0];
+        
+        // Fecha mínima: Mañana (día 2)
+        const fechaMinima = new Date(ahora);
+        fechaMinima.setDate(fechaMinima.getDate() + 1);
+        const fechaMinimaStr = fechaMinima.toISOString().split('T')[0];
+        
+        // Fecha máxima: Día 6 (5 días después de hoy)
+        const fechaMaxima = new Date(ahora);
+        fechaMaxima.setDate(fechaMaxima.getDate() + 5);
+        const fechaMaximaStr = fechaMaxima.toISOString().split('T')[0];
+        
+        // Mostrar calendario y turno de regreso
+        seccionDescanso.style.display = 'block';
+        seccionDescanso.innerHTML = `
+            <div style="background: #fff3cd; padding: 15px; border-radius: 10px; margin-bottom: 15px; border-left: 4px solid #ffc107;">
+                <strong>Configura tu descanso:</strong>
+                <p style="margin: 10px 0 0 0; font-size: 14px; color: #666;">
+                    ⚠️ El inicio de descanso debe ser entre <strong>mañana</strong> (día 2) y máximo <strong>5 días después</strong> (día 6).
+                </p>
+            </div>
+            
+            <div class="form-group">
+                <label>Primer día de descanso:</label>
+                <input type="date" 
+                       id="fechaDescansoInicio" 
+                       class="form-control" 
+                       min="${fechaMinimaStr}" 
+                       max="${fechaMaximaStr}"
+                       onchange="calcularFechaFin()" 
+                       style="width: 100%; padding: 12px; border-radius: 8px; border: 2px solid #e1e5e9; font-size: 16px;">
+                <small style="color: #666;">Mínimo: ${fechaMinimaStr} | Máximo: ${fechaMaximaStr}</small>
+            </div>
+            
+            <div class="form-group">
+                <label>Segundo día de descanso:</label>
+                <input type="date" 
+                       id="fechaDescansoFin" 
+                       class="form-control" 
+                       readonly 
+                       style="width: 100%; padding: 12px; border-radius: 8px; border: 2px solid #e1e5e9; font-size: 16px; background: #f5f5f5;">
+                <small style="color: #666;">Se calcula automáticamente (día consecutivo)</small>
+            </div>
+            
+            <div class="form-group">
+                <label>Turno de REGRESO (post-descanso):</label>
+                <select id="turnoRegreso" class="form-control" style="width: 100%; padding: 12px; border-radius: 8px; border: 2px solid #e1e5e9; font-size: 16px;">
+                    <option value="">-- Seleccione --</option>
+                    ${Object.entries(TURNOS_ATTF).map(([key, turno]) => 
+                        `<option value="${key}">${turno.nombre}</option>`
+                    ).join('')}
+                </select>
+            </div>
+        `;
+        btnConfirmar.style.display = 'block';
+    } else if (turnoManana) {
+        seccionDescanso.style.display = 'none';
+        btnConfirmar.style.display = 'block';
+    } else {
+        seccionDescanso.style.display = 'none';
+        btnConfirmar.style.display = 'none';
+    }
+}
+
+
+
+function calcularFechaFin() {
+    const fechaInicio = document.getElementById('fechaDescansoInicio').value;
+    const inputFin = document.getElementById('fechaDescansoFin');
+    
+    if (!fechaInicio) return;
+    
+    const fecha = new Date(fechaInicio + 'T00:00:00');
+    fecha.setDate(fecha.getDate() + 1); // Día consecutivo
+    
+    const fechaFin = fecha.toISOString().split('T')[0];
+    inputFin.value = fechaFin;
+}
+
+
+
+async function confirmarTurnoMananaATTF() {
+    const turnoManana = document.getElementById('turnoManana').value;
+    
+    if (!turnoManana) {
+        alert('Por favor seleccione el turno de mañana');
+        return;
+    }
+    
+    // Caso 1: Eligió un turno normal
+    if (turnoManana !== 'descanso') {
+        const turno = TURNOS_ATTF[turnoManana];
+        
+        // Confirmación
+        const confirmar = confirm(`¿Confirmas que tu turno de MAÑANA será:\n\n${turno.nombre}?\n\n✅ SÍ - Guardar y acceder\n❌ NO - Corregir`);
+        
+        if (!confirmar) return;
+        
+        // Guardar en BD
+        const ahora = new Date();
+        const fechaHoy = ahora.toISOString().split('T')[0];
+        const fechaManana = new Date(ahora);
+        fechaManana.setDate(fechaManana.getDate() + 1);
+        const fechaMananaStr = fechaManana.toISOString().split('T')[0];
+        
+        const turnoHoy = window.turnoHoySeleccionado || currentUser.turno_hoy;
+        const contadorActual = parseFloat(currentUser.contador_turnos) || 0;
+        const nuevoContador = contadorActual + 1;
+        
+        const { error } = await supabaseClient
+            .from('usuarios')
+            .update({
+                turno_hoy: turnoHoy,
+                fecha_turno_hoy: fechaHoy,
+                turno_manana: turnoManana,
+                fecha_turno_manana: fechaMananaStr,
+                contador_turnos: nuevoContador,
+                estado_ciclo: 'ciclo_normal',
+                ultimaconexion: new Date().toISOString()
+            })
+            .eq('id', currentUser.id);
+        
+        if (error) {
+            alert('Error guardando configuración: ' + error.message);
+            return;
+        }
+        
+        // Acceso al menú
+        accederMenuATTF();
+        
+    } else {
+        // Caso 2: Eligió descanso
+        const fechaInicio = document.getElementById('fechaDescansoInicio').value;
+        const fechaFin = document.getElementById('fechaDescansoFin').value;
+        const turnoRegreso = document.getElementById('turnoRegreso').value;
+        
+        if (!fechaInicio || !fechaFin || !turnoRegreso) {
+            alert('Por favor complete todos los campos del descanso');
+            return;
+        }
+        
+        // 🎯 VALIDACIÓN: Verificar que no exceda día 6
+        const ahora = new Date();
+        const fechaHoy = ahora.toISOString().split('T')[0];
+        
+        const validacion = validarFechaDescansoMaxima(fechaInicio, fechaHoy);
+        if (!validacion.valido) {
+            alert(validacion.mensaje);
+            return;
+        }
+        
+        const turnoRegresoObj = TURNOS_ATTF[turnoRegreso];
+        
+        // Confirmación
+        const confirmar = confirm(
+            `¿Confirmas tu configuración de descanso?\n\n` +
+            `📅 Descanso: ${fechaInicio} y ${fechaFin}\n` +
+            `🔙 Regreso: ${turnoRegresoObj.nombre}\n\n` +
+            `✅ SÍ - Guardar y acceder\n❌ NO - Corregir`
+        );
+        
+        if (!confirmar) return;
+        
+        // Guardar en BD
+        const turnoHoy = window.turnoHoySeleccionado || currentUser.turno_hoy;
+        
+        // Calcular fecha de regreso (día después del último descanso)
+        const fechaRegresoDate = new Date(fechaFin + 'T00:00:00');
+        fechaRegresoDate.setDate(fechaRegresoDate.getDate() + 1);
+        const fechaRegreso = fechaRegresoDate.toISOString().split('T')[0];
+        
+        const { error } = await supabaseClient
+            .from('usuarios')
+            .update({
+                turno_hoy: turnoHoy,
+                fecha_turno_hoy: fechaHoy,
+                descanso_fecha_inicio: fechaInicio,
+                descanso_fecha_fin: fechaFin,
+                turno_regreso: turnoRegreso,
+                fecha_turno_regreso: fechaRegreso,
+                contador_turnos: 0, // Resetear
+                estado_ciclo: 'ciclo_normal',
+                // 🎯 CAMBIO: NO guardar turno_manana cuando se elige descanso
+                turno_manana: null,
+                fecha_turno_manana: null,
+                ultimaconexion: new Date().toISOString()
+            })
+            .eq('id', currentUser.id);
+        
+        if (error) {
+            alert('Error guardando descanso: ' + error.message);
+            return;
+        }
+        
+        // Acceso al menú
+        accederMenuATTF();
+    }
+}
+
+
+function accederMenuATTF() {
+    document.getElementById('currentUser').textContent = `Bienvenido, ${currentUser.usuario} (ATTF)`;
+    document.getElementById('userInfo').classList.remove('hidden');
+    document.getElementById('loginSection').style.display = 'none';
+    document.getElementById('tableSelectionSection').style.display = 'block';
+    
+    mostrarTablasSegunRol();
+    iniciarVerificacionSesion();
+    guardarDatosOffline();
+    
+    console.log('✅ Acceso concedido al menú ATTF');
+}
+
+
+function mostrarForzarDescansoATTF() {
+    const loginSection = document.getElementById('loginSection');
+    
+    // 🎯 CAMBIO: Calcular fechas automáticamente (mañana y pasado)
+    const ahora = new Date();
+    
+    const fechaManana = new Date(ahora);
+    fechaManana.setDate(fechaManana.getDate() + 1);
+    const fechaManaanaStr = fechaManana.toISOString().split('T')[0];
+    
+    const fechaPasado = new Date(ahora);
+    fechaPasado.setDate(fechaPasado.getDate() + 2);
+    const fechaPasadoStr = fechaPasado.toISOString().split('T')[0];
+    
+    loginSection.innerHTML = `
+        <img src="https://cdnimg.bnamericas.com/HFvkiBpeoLTFyPBTjytdbdohtBDrWQsnxgYaUwIlxAEFZVYKsYrwygPFBPYYlShO.png" alt="Logo CLESA" class="logo">
+        <h1 class="titulo-degradado">CLESA</h1>
+        <p class="subtitulo">Descanso Obligatorio</p>
+        
+        <div style="background: #fff3cd; padding: 15px; border-radius: 10px; margin-bottom: 20px; border-left: 4px solid #ffc107;">
+            <strong>⚠️ Has completado 5 turnos consecutivos</strong><br>
+            Debes tomar tu descanso obligatorio de 2 días
+        </div>
+        
+        <div style="background: #e3f2fd; padding: 15px; border-radius: 10px; margin-bottom: 20px; border-left: 4px solid #2196f3;">
+            <strong>📅 Tus días de descanso son:</strong><br><br>
+            <div style="font-size: 18px; font-weight: 600; color: #2d3748;">
+                🗓️ Primer día: ${fechaManaanaStr}<br>
+                🗓️ Segundo día: ${fechaPasadoStr}
+            </div>
+        </div>
+        
+        <div class="form-group">
+            <label>Turno de REGRESO:</label>
+            <select id="turnoRegreso" class="form-control" style="width: 100%; padding: 12px; border-radius: 8px; border: 2px solid #e1e5e9; font-size: 16px;">
+                <option value="">-- Seleccione --</option>
+                ${Object.entries(TURNOS_ATTF).map(([key, turno]) => 
+                    `<option value="${key}">${turno.nombre}</option>`
+                ).join('')}
+            </select>
+        </div>
+        
+        <button class="btn" onclick="confirmarDescansoObligatorioATTF()" style="margin-top: 20px;">
+            ✅ Confirmar Descanso
+        </button>
+    `;
+    
+    // 🎯 CAMBIO: Guardar las fechas en variables globales temporales
+    window.fechasDescansoAutomaticas = {
+        inicio: fechaManaanaStr,
+        fin: fechaPasadoStr
+    };
+}
+    
+
+async function confirmarDescansoObligatorioATTF() {
+    const turnoRegreso = document.getElementById('turnoRegreso').value;
+    
+    if (!turnoRegreso) {
+        alert('Por favor seleccione el turno de regreso');
+        return;
+    }
+    
+    // 🎯 CAMBIO: Usar fechas calculadas automáticamente
+    const fechaInicio = window.fechasDescansoAutomaticas.inicio;
+    const fechaFin = window.fechasDescansoAutomaticas.fin;
+    
+    const turnoRegresoObj = TURNOS_ATTF[turnoRegreso];
+    
+    const confirmar = confirm(
+        `¿Confirmas tu descanso obligatorio?\n\n` +
+        `📅 Descanso: ${fechaInicio} y ${fechaFin}\n` +
+        `🔙 Regreso: ${turnoRegresoObj.nombre}\n\n` +
+        `✅ SÍ - Guardar y acceder\n❌ NO - Corregir`
+    );
+    
+    if (!confirmar) return;
+    
+    // Calcular fecha de regreso (día después del último descanso)
+    const fechaRegresoDate = new Date(fechaFin + 'T00:00:00');
+    fechaRegresoDate.setDate(fechaRegresoDate.getDate() + 1);
+    const fechaRegreso = fechaRegresoDate.toISOString().split('T')[0];
+    
+    const { error } = await supabaseClient
+        .from('usuarios')
+        .update({
+            descanso_fecha_inicio: fechaInicio,
+            descanso_fecha_fin: fechaFin,
+            turno_regreso: turnoRegreso,
+            fecha_turno_regreso: fechaRegreso,
+            contador_turnos: 0, // Resetear
+            estado_ciclo: 'ciclo_normal',
+            // 🎯 CAMBIO: Limpiar turnos de hoy y mañana
+            turno_manana: null,
+            fecha_turno_manana: null,
+            ultimaconexion: new Date().toISOString()
+        })
+        .eq('id', currentUser.id);
+    
+    if (error) {
+        alert('Error guardando: ' + error.message);
+        return;
+    }
+    
+    // Limpiar variable temporal
+    delete window.fechasDescansoAutomaticas;
+    
+    accederMenuATTF();
+}
+
+
+async function loginPoda(userData) {
+    console.log('🌳 Iniciando flujo Poda');
+    
+    const ahora = new Date();
+    const fechaHoy = ahora.toISOString().split('T')[0];
+    
+    // 1. Verificar si está en día de descanso
+    if (verificarDiaDescanso(userData)) {
+        alert('Hoy es uno de tus días de descanso. No puedes acceder al sistema.');
+        logout();
+        return;
+    }
+    
+    // 2. Verificar si necesita configurar días de descanso
+    if (!userData.descanso_fecha_fin || userData.descanso_fecha_fin < fechaHoy) {
+        console.log('🔧 Poda necesita configurar días de descanso');
+        mostrarConfiguracionDescansoPoda();
+        return;
+    }
+    
+    // 3. Acceso directo al menú
+    document.getElementById('currentUser').textContent = `Bienvenido, ${userData.usuario} (Poda)`;
+    document.getElementById('userInfo').classList.remove('hidden');
+    document.getElementById('loginSection').style.display = 'none';
+    document.getElementById('tableSelectionSection').style.display = 'block';
+    
+    mostrarTablasSegunRol();
+    iniciarVerificacionSesion();
+    guardarDatosOffline();
+    
+    console.log('✅ Acceso concedido al menú Poda');
+}
+
+
+function mostrarConfiguracionDescansoPoda() {
+    const loginSection = document.getElementById('loginSection');
+    
+    loginSection.innerHTML = `
+        <img src="https://cdnimg.bnamericas.com/HFvkiBpeoLTFyPBTjytdbdohtBDrWQsnxgYaUwIlxAEFZVYKsYrwygPFBPYYlShO.png" alt="Logo CLESA" class="logo">
+        <h1 class="titulo-degradado">CLESA</h1>
+        <p class="subtitulo">Configura tus Días de Descanso</p>
+        
+        <div style="background: #e8f5e9; padding: 15px; border-radius: 10px; margin-bottom: 20px; border-left: 4px solid #4caf50;">
+            <strong>Rol Poda:</strong> Selecciona 2 días consecutivos de descanso para esta semana
+        </div>
+        
+        <div class="form-group">
+            <label>Primer día de descanso:</label>
+            <input type="date" id="fechaDescansoPodaInicio" class="form-control" onchange="calcularFechaFinPoda()" style="width: 100%; padding: 12px; border-radius: 8px; border: 2px solid #e1e5e9; font-size: 16px;">
+        </div>
+        
+        <div class="form-group">
+            <label>Segundo día de descanso:</label>
+            <input type="date" id="fechaDescansoPodaFin" class="form-control" readonly style="width: 100%; padding: 12px; border-radius: 8px; border: 2px solid #e1e5e9; font-size: 16px; background: #f5f5f5;">
+            <small style="color: #666;">Se calcula automáticamente (día consecutivo)</small>
+        </div>
+        
+        <button class="btn" onclick="confirmarDescansoPoda()" style="margin-top: 20px;">
+            ✅ Confirmar Días de Descanso
+        </button>
+        <button class="btn btn-danger" onclick="logout()" style="margin-top: 10px;">
+            Cancelar
+        </button>
+    `;
+}
+
+
+function calcularFechaFinPoda() {
+    const fechaInicio = document.getElementById('fechaDescansoPodaInicio').value;
+    const inputFin = document.getElementById('fechaDescansoPodaFin');
+    
+    if (!fechaInicio) return;
+    
+    const fecha = new Date(fechaInicio + 'T00:00:00');
+    fecha.setDate(fecha.getDate() + 1); // Día consecutivo
+    
+    const fechaFin = fecha.toISOString().split('T')[0];
+    inputFin.value = fechaFin;
+}
+
+
+async function confirmarDescansoPoda() {
+    const fechaInicio = document.getElementById('fechaDescansoPodaInicio').value;
+    const fechaFin = document.getElementById('fechaDescansoPodaFin').value;
+    
+    if (!fechaInicio || !fechaFin) {
+        alert('Por favor seleccione las fechas de descanso');
+        return;
+    }
+    
+    // Validar que sean fechas futuras
+    const hoy = new Date().toISOString().split('T')[0];
+    if (fechaInicio <= hoy) {
+        alert('Las fechas de descanso deben ser futuras (desde mañana en adelante)');
+        return;
+    }
+    
+    // Confirmación
+    const confirmar = confirm(
+        `¿Confirmas tus días de descanso?\n\n` +
+        `📅 Primer día: ${fechaInicio}\n` +
+        `📅 Segundo día: ${fechaFin}\n\n` +
+        `✅ SÍ - Guardar y acceder\n` +
+        `❌ NO - Corregir`
+    );
+    
+    if (!confirmar) return;
+    
+    // Guardar en BD
+    const { error } = await supabaseClient
+        .from('usuarios')
+        .update({
+            descanso_fecha_inicio: fechaInicio,
+            descanso_fecha_fin: fechaFin,
+            ultimaconexion: new Date().toISOString(),
+            ultima_actividad: new Date().toISOString()
+        })
+        .eq('id', currentUser.id);
+    
+    if (error) {
+        alert('Error guardando días de descanso: ' + error.message);
+        return;
+    }
+    
+    console.log('✅ Días de descanso Poda guardados');
+    
+    // Actualizar currentUser
+    currentUser.descanso_fecha_inicio = fechaInicio;
+    currentUser.descanso_fecha_fin = fechaFin;
+    
+    // Acceso al menú
+    document.getElementById('currentUser').textContent = `Bienvenido, ${currentUser.usuario} (Poda)`;
+    document.getElementById('userInfo').classList.remove('hidden');
+    document.getElementById('loginSection').style.display = 'none';
+    document.getElementById('tableSelectionSection').style.display = 'block';
+    
+    mostrarTablasSegunRol();
+    iniciarVerificacionSesion();
+    guardarDatosOffline();
+}
+
+
+async function limpiarDiasDescansoViejos() {
+    // 1. Obtener la fecha de HOY en formato YYYY-MM-DD para comparación
+    const ahora = new Date();
+    const fechaHoyStr = ahora.toISOString().split('T')[0];
+    
+    // 2. Buscar usuarios cuyo descanso terminó o termina hoy
+    // La fecha de fin de descanso (descanso_fecha_fin) es el último día libre.
+    // El turno de regreso (turno_regreso) está programado para el día siguiente.
+    // Por eso, usamos 'lt' (less than, menor que) para fechas pasadas.
+    const { data: usuarios, error } = await supabaseClient
+        .from('usuarios')
+        .select('id, turno_regreso, fecha_turno_regreso, descanso_fecha_fin')
+        // Filtramos a los que tienen un descanso_fecha_fin que ya pasó o es hoy
+        .lte('descanso_fecha_fin', fechaHoyStr) 
+        // y que tienen un turno de regreso programado
+        .not('turno_regreso', 'is', null); 
+        
+    if (error) {
+        console.error('Error al consultar usuarios para limpieza de descanso:', error);
+        return;
+    }
+    
+    // 3. Procesar cada usuario encontrado (cuyo descanso terminó)
+    const updates = usuarios.map(usuario => {
+        // Promovemos el Turno de Regreso para que se convierta en el Turno de Hoy.
+        // Esto reinicia el contador y el ciclo de 5 días.
+        
+        // Lógica de validación de REGRESO:
+        // Solo promovemos si la fecha de regreso es HOY. 
+        // Si el usuario se ausentó (llegó más tarde de la fecha_turno_regreso), 
+        // la función limpiarTurnosViejos() manejará la migración del turno.
+        const fechaRegresoProgramada = usuario.fecha_turno_regreso;
+
+        if (fechaRegresoProgramada === fechaHoyStr) {
+            return {
+                id: usuario.id,
+                // Reinicio del ciclo:
+                turno_hoy: usuario.turno_regreso,
+                fecha_turno_hoy: usuario.fecha_turno_regreso,
+                contador_turnos: 0, // El primer turno después del descanso es el turno 0/1
+
+                // Limpieza de campos de descanso (muy importante):
+                descanso_fecha_inicio: null,
+                descanso_fecha_fin: null,
+                turno_regreso: null,
+                fecha_turno_regreso: null
+            };
+        }
+        
+        // Si la fecha de regreso ya pasó, se salta este usuario en la limpieza de descanso.
+        // Esto evita que se "peguen" turnos viejos si el usuario estuvo inactivo mucho tiempo.
+        return null;
+    }).filter(update => update !== null); // Eliminar los registros nulos (que no deben actualizarse hoy)
+
+
+    if (updates.length > 0) {
+        // 4. Ejecutar la actualización masiva de los usuarios que regresan
+        const { error: updateError } = await supabaseClient
+            .from('usuarios')
+            .upsert(updates);
+
+        if (updateError) {
+            console.error('Error al actualizar limpieza de descanso:', updateError);
+        } else {
+            console.log(`🌴 ${updates.length} usuario(s) regresaron de descanso. Ciclo reiniciado.`);
+        }
+    }
+}
+
+
+async function limpiarTurnosViejos() {
+    const ahora = new Date();
+    // 1. Obtener la fecha de HOY en formato YYYY-MM-DD para comparación
+    const fechaHoyStr = ahora.toISOString().split('T')[0];
+    
+    // Buscar usuarios donde la fecha_turno_hoy no sea hoy (es decir, ya pasó)
+    const { data: usuarios, error } = await supabaseClient
+        .from('usuarios')
+        .select('id, fecha_turno_hoy, turno_manana, fecha_turno_manana')
+        // Filtramos por usuarios cuya fecha_turno_hoy NO sea la de hoy
+        .not('fecha_turno_hoy', 'eq', fechaHoyStr)
+        .or('turno_hoy.not.is.null'); // Solo aquellos que alguna vez tuvieron turno hoy
+        
+    if (error) {
+        console.error('Error al consultar usuarios para limpieza de turnos:', error);
+        return;
+    }
+    
+    // 2. Procesar cada usuario encontrado
+    const updates = usuarios.map(usuario => {
+        // La fecha de turno de hoy programada ya pasó, o nunca se programó para hoy.
+        // Asignamos el turno de MAÑANA como el turno de HOY.
+        const nuevoTurnoHoy = usuario.turno_manana;
+        const nuevaFechaTurnoHoy = usuario.fecha_turno_manana;
+        
+        return {
+            id: usuario.id,
+            turno_hoy: nuevoTurnoHoy,
+            fecha_turno_hoy: nuevaFechaTurnoHoy,
+            turno_manana: null, // Limpiamos el turno de mañana
+            fecha_turno_manana: null // Limpiamos la fecha de mañana
+        };
+    });
+
+    if (updates.length > 0) {
+        // 3. Ejecutar la actualización masiva de los turnos "viejos"
+        const { error: updateError } = await supabaseClient
+            .from('usuarios')
+            .upsert(updates);
+
+        if (updateError) {
+            console.error('Error al actualizar turnos viejos:', updateError);
+        } else {
+            console.log(`🧹 ${updates.length} turno(s) viejo(s) limpiado(s) y migrado(s).`);
+        }
+    }
+}
+
+
+
+
+
+function mostrarTablasSegunRol() {
+    if (!currentUser || !currentUser.rol) {
+        console.log('❌ currentUser no está disponible');
+        return;
+    }
+    
+    const tableOptions = document.querySelectorAll('.table-option');
+    
+    if (currentUser.rol === 'Lectura') {
+        // Solo consultas_servicios, sin consumos
+        tableOptions.forEach(option => {
+            const onclick = option.getAttribute('onclick');
+            if (onclick && onclick.includes('consultas_servicios')) {
+                option.style.display = 'block';
+            } else {
+                option.style.display = 'none';
+            }
+        });
+    } else if (currentUser.rol === 'ATTF' || currentUser.rol === 'Poda') {
+        // Consultas_servicios y TX y Cortes, sin consumos
+        tableOptions.forEach(option => {
+            const onclick = option.getAttribute('onclick');
+            if (onclick && (onclick.includes('consultas_servicios') || onclick.includes('TX y Cortes'))) {
+                option.style.display = 'block';
+            } else {
+                option.style.display = 'none';
+            }
+        });
+    } else if (currentUser.rol === 'Contratista') {
+        // Todas las tablas, sin consumos
+        tableOptions.forEach(option => {
+            option.style.display = 'block';
+        });
+    } else {
+        // Supervisor y Consulta: Todas las tablas con consumos
+        tableOptions.forEach(option => {
+            option.style.display = 'block';
+        });
+    }
+}
+
+
+async function desbloquearUsuario(username) {
+    if (!currentUser || currentUser.rol !== 'Supervisor') {
+        alert('Solo los supervisores pueden desbloquear usuarios');
+        return;
+    }
+    
+    const { error } = await supabaseClient
+        .from('usuarios')
+        .update({
+            bloqueado: false,
+            razon_bloqueo: null,
+            estado_ciclo: 'primera_vez', // Resetear para ATTF
+            contador_turnos: 0,
+            turno_hoy: null,
+            fecha_turno_hoy: null,
+            turno_manana: null,
+            fecha_turno_manana: null,
+            descanso_fecha_inicio: null,
+            descanso_fecha_fin: null,
+            turno_regreso: null,
+            fecha_turno_regreso: null,
+            ultima_actividad: new Date().toISOString()
+        })
+        .eq('usuario', username);
+    
+    if (error) {
+        alert('Error desbloqueando usuario: ' + error.message);
+        return;
+    }
+    
+    alert(`Usuario ${username} desbloqueado exitosamente.\n\nSu configuración ha sido reseteada.`);
+}
+
+
 
 
 // === FUNCIÓN PARA INCREMENTAR CONTADOR DE BÚSQUEDAS (SOLUCIÓN A LA CONCATENACIÓN) ===
@@ -1294,147 +2122,163 @@ function verGraficas(graficaData, nombreCliente, cuentaContrato) {
 }
 
 
-    // ✅ Función para crear gráficas
-    function crearGraficas(datos) {
-        try {
-            const ctxConsumos = document.getElementById('consumosChart');
-            if (ctxConsumos) {
-                consumosChart = new Chart(ctxConsumos, {
-                    type: 'bar',
-                    data: {
-                        labels: datos.meses,
-                        datasets: [{
-                            label: 'Consumo (kWh)',
-                            data: datos.consumos,
-                            backgroundColor: 'rgba(102, 126, 234, 0.8)',
-                            borderColor: 'rgba(102, 126, 234, 1)',
-                            borderWidth: 2,
-                            borderRadius: 5,
-                            borderSkipped: false,
-                        }]
-                    },
-                    plugins: [ChartDataLabels], // ✅ Activar plugin de etiquetas
-                    options: {
-                        responsive: true,
-                        maintainAspectRatio: false,
-                        plugins: {
-                            legend: {display: true, position: 'top'},
-                            // ✅ Configuración de etiquetas de datos
-                            datalabels: {
-                                display: true,
-                                anchor: 'end',
-                                align: 'top',
-                                font: {
-                                    weight: 'bold',
-                                    size: 12
-                                },
-                                color: '#2d3748',
-                                formatter: function(value) {
-                                    return value + ' kWh';
-                                }
+   // ✅ Función para crear gráficas HORIZONTALES (barras de izq→der, líneas arriba→abajo)
+function crearGraficas(datos) {
+    try {
+        const ctxConsumos = document.getElementById('consumosChart');
+        if (ctxConsumos) {
+            consumosChart = new Chart(ctxConsumos, {
+                type: 'bar',
+                data: {
+                    labels: datos.meses,
+                    datasets: [{
+                        label: 'Consumo (kWh)',
+                        data: datos.consumos,
+                        backgroundColor: 'rgba(102, 126, 234, 0.8)',
+                        borderColor: 'rgba(102, 126, 234, 1)',
+                        borderWidth: 2,
+                        borderRadius: 5,
+                        borderSkipped: false,
+                    }]
+                },
+                plugins: [ChartDataLabels],
+                options: {
+                    indexAxis: 'y', // 🎯 CLAVE: Cambiar a horizontal (meses en eje Y)
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {display: true, position: 'top'},
+                        datalabels: {
+                            display: true,
+                            anchor: 'end',
+                            align: 'right',
+                            font: {
+                                weight: 'bold',
+                                size: 12
                             },
-                            tooltip: {
-                                callbacks: {
-                                    label: function(context) {
-                                        return `${context.dataset.label}: ${context.parsed.y} kWh`;
-                                    }
-                                }
+                            color: '#2d3748',
+                            formatter: function(value) {
+                                return value + ' kWh';
                             }
                         },
-                        scales: {
-                            y: {
-                                beginAtZero: true,
-                                title: {display: true, text: 'Consumo (kWh)'},
-                                // ✅ Agregar espacio extra arriba para las etiquetas
-                                suggestedMax: function(context) {
-                                    const max = Math.max(...datos.consumos);
-                                    return max * 1.15; // 15% más de espacio
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    return `${context.dataset.label}: ${context.parsed.x} kWh`;
                                 }
-                            },
-                            x: {title: {display: true, text: 'Mes'}}
+                            }
                         }
-                    }
-                });
-            }
-
-            const ctxLecturas = document.getElementById('lecturasChart');
-            if (ctxLecturas) {
-                lecturasChart = new Chart(ctxLecturas, {
-                    type: 'line',
-                    data: {
-                        labels: datos.meses,
-                        datasets: [{
-                            label: 'Lectura Acumulada',
-                            data: datos.lecturas,
-                            borderColor: 'rgba(118, 75, 162, 1)',
-                            backgroundColor: 'rgba(118, 75, 162, 0.1)',
-                            borderWidth: 3,
-                            fill: true,
-                            tension: 0.4,
-                            pointBackgroundColor: 'rgba(118, 75, 162, 1)',
-                            pointBorderColor: '#fff',
-                            pointBorderWidth: 2,
-                            pointRadius: 8, // ✅ Puntos un poco más grandes
-                            pointHoverRadius: 10
-                        }]
                     },
-                    plugins: [ChartDataLabels], // ✅ Activar plugin de etiquetas
-                    options: {
-                        responsive: true,
-                        maintainAspectRatio: false,
-                        plugins: {
-                            legend: {display: true, position: 'top'},
-                            // ✅ Configuración de etiquetas de datos para líneas
-                            datalabels: {
-                                display: true,
-                                anchor: 'end',
-                                align: 'top',
-                                offset: 5,
+                    scales: {
+                        x: { // 🎯 Ahora X es el valor (consumo)
+                            beginAtZero: true,
+                            title: {display: true, text: 'Consumo (kWh)'},
+                            suggestedMax: function(context) {
+                                const max = Math.max(...datos.consumos);
+                                return max * 1.15;
+                            }
+                        },
+                        y: { // 🎯 Ahora Y son los meses
+                            title: {display: true, text: 'Mes'},
+                            ticks: {
                                 font: {
-                                    weight: 'bold',
                                     size: 11
-                                },
-                                color: '#2d3748',
-                                backgroundColor: 'rgba(255, 255, 255, 0.8)',
-                                borderColor: 'rgba(118, 75, 162, 0.5)',
-                                borderWidth: 1,
-                                borderRadius: 4,
-                                padding: 3,
-                                formatter: function(value) {
-                                    return value.toLocaleString() + ' kWh';
-                                }
-                            },
-                            tooltip: {
-                                callbacks: {
-                                    label: function(context) {
-                                        return `${context.dataset.label}: ${context.parsed.y.toLocaleString()} kWh`;
-                                    }
                                 }
                             }
-                        },
-                        scales: {
-                            y: {
-                                beginAtZero: false,
-                                title: {display: true, text: 'Lectura Acumulada (kWh)'},
-                                ticks: {callback: function(value){return value.toLocaleString();}},
-                                // ✅ Agregar espacio extra arriba para las etiquetas
-                                suggestedMax: function(context) {
-                                    const max = Math.max(...datos.lecturas);
-                                    return max * 1.1; // 10% más de espacio
-                                }
-                            },
-                            x: {title: {display: true, text: 'Mes'}}
                         }
                     }
-                });
-            }
-
-            console.log('✅ Gráficas creadas exitosamente');
-
-        } catch (error) {
-            console.error('❌ Error creando gráficas:', error);
+                }
+            });
         }
+
+        const ctxLecturas = document.getElementById('lecturasChart');
+        if (ctxLecturas) {
+            lecturasChart = new Chart(ctxLecturas, {
+                type: 'line',
+                data: {
+                    labels: datos.meses,
+                    datasets: [{
+                        label: 'Lectura Acumulada',
+                        data: datos.lecturas,
+                        borderColor: 'rgba(118, 75, 162, 1)',
+                        backgroundColor: 'rgba(118, 75, 162, 0.1)',
+                        borderWidth: 3,
+                        fill: true,
+                        tension: 0.4,
+                        pointBackgroundColor: 'rgba(118, 75, 162, 1)',
+                        pointBorderColor: '#fff',
+                        pointBorderWidth: 2,
+                        pointRadius: 8,
+                        pointHoverRadius: 10
+                    }]
+                },
+                plugins: [ChartDataLabels],
+                options: {
+                    indexAxis: 'y', // 🎯 CLAVE: Cambiar a horizontal (meses en eje Y)
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {display: true, position: 'top'},
+                        datalabels: {
+                            display: true,
+                            anchor: 'end',
+                            align: 'right',
+                            offset: 5,
+                            font: {
+                                weight: 'bold',
+                                size: 11
+                            },
+                            color: '#2d3748',
+                            backgroundColor: 'rgba(255, 255, 255, 0.8)',
+                            borderColor: 'rgba(118, 75, 162, 0.5)',
+                            borderWidth: 1,
+                            borderRadius: 4,
+                            padding: 3,
+                            formatter: function(value) {
+                                return value.toLocaleString() + ' kWh';
+                            }
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    return `${context.dataset.label}: ${context.parsed.x.toLocaleString()} kWh`;
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: { // 🎯 Ahora X es el valor (lectura)
+                            beginAtZero: false,
+                            title: {display: true, text: 'Lectura Acumulada (kWh)'},
+                            ticks: {
+                                callback: function(value) {
+                                    return value.toLocaleString();
+                                }
+                            },
+                            suggestedMax: function(context) {
+                                const max = Math.max(...datos.lecturas);
+                                return max * 1.1;
+                            }
+                        },
+                        y: { // 🎯 Ahora Y son los meses
+                            title: {display: true, text: 'Mes'},
+                            ticks: {
+                                font: {
+                                    size: 11
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        console.log('✅ Gráficas creadas exitosamente en formato HORIZONTAL');
+
+    } catch (error) {
+        console.error('❌ Error creando gráficas:', error);
     }
+}
 
     // ✅ Función para cerrar gráficas
     function cerrarGraficas() {
@@ -1514,214 +2358,8 @@ function generarKMLString(ubicaciones) {
 
     
 
-     // === FUNCIÓN PARA MOSTRAR LA SELECCIÓN DE TURNO (CORREGIDA) ===
-function mostrarSeleccionTurno() {
-    const ahora = new Date();
-    const horaActual = ahora.getHours();
-    const diaActual = ahora.toDateString();
-    
-    // VALIDACIÓN: Si ya tiene turno asignado, ir directo al menú
-    if (currentUser.turnoAsignado) {
-        console.log('✅ Usuario ya tiene turno asignado:', currentUser.turnoAsignado);
-        document.getElementById('currentUser').textContent = `Bienvenido, ${currentUser.usuario} - ${TURNOS_ATTF[currentUser.turnoAsignado].nombre}`;
-        document.getElementById('userInfo').classList.remove('hidden');
-        document.getElementById('loginSection').style.display = 'none';
-        document.getElementById('tableSelectionSection').style.display = 'block';
-        
-        mostrarTablasSegunRol();
-        iniciarVerificacionSesion();
-        setInterval(verificarCorteTurno, 5 * 60 * 1000);
-        return;
-    }
-    
-    const turnosDisponibles = [];
-    const lastSession = JSON.parse(sessionStorage.getItem('attf_last_turn'));
-    
-    // SI YA ELIGIÓ UN TURNO HOY, solo permitir reingreso al mismo turno
-    if (lastSession && lastSession.dia === diaActual) {
-        const turnoAnterior = TURNOS_ATTF[lastSession.turnoKey];
-        
-        let turnoAunValido = false;
-        if (turnoAnterior.horaFinGracia < turnoAnterior.horaInicioGracia) {
-            turnoAunValido = horaActual >= turnoAnterior.horaInicioGracia || horaActual < turnoAnterior.horaFinGracia;
-        } else {
-            turnoAunValido = horaActual >= turnoAnterior.horaInicioGracia && horaActual < turnoAnterior.horaFinGracia;
-        }
-        
-        if (turnoAunValido) {
-            turnosDisponibles.push({ 
-                key: lastSession.turnoKey, 
-                ...turnoAnterior, 
-                descripcion: "Continuar en tu turno de hoy" 
-            });
-        } else {
-            alert('Tu turno de hoy ha finalizado. Podrás acceder nuevamente mañana.');
-            logout();
-            return;
-        }
-    } else {
-        // PRIMER INGRESO DEL DÍA: Mostrar turnos según hora actual
-        Object.entries(TURNOS_ATTF).forEach(([key, turno]) => {
-            let puedeIngresar = false;
-            
-            if (turno.horaFinGracia < turno.horaInicioGracia) {
-                if (horaActual >= turno.horaInicioGracia) {
-                    puedeIngresar = true;
-                }
-            } else {
-                if (horaActual >= turno.horaInicioGracia && horaActual < turno.horaFinGracia) {
-                    puedeIngresar = true;
-                }
-            }
-            
-            if (puedeIngresar) {
-                turnosDisponibles.push({ key, ...turno, descripcion: "Turno disponible" });
-            }
-        });
-    }
-    
-    if (turnosDisponibles.length === 0) {
-        alert('No hay turnos disponibles. Ya seleccionaste un turno hoy o el horario no corresponde.');
-        logout();
-        return;
-    }
-    
-    const loginSection = document.getElementById('loginSection');
-    loginSection.innerHTML = `
-        <img src="https://cdnimg.bnamericas.com/HFvkiBpeoLTFyPBTjytdbdohtBDrWQsnxgYaUwIlxAEFZVYKsYrwygPFBPYYlShO.png" alt="Logo CLESA" class="logo">
-        <h1 class="titulo-degradado">CLESA</h1>
-        <p class="subtitulo">Seleccione su Turno de Trabajo</p>
-        
-        <div class="table-selector">
-            ${turnosDisponibles.map(turno => `
-                <div class="table-option" onclick="seleccionarTurno('${turno.key}')">
-                    <span class="table-icon">🕐</span>
-                    <div class="table-title">${turno.nombre}</div>
-                    <div class="table-description">${turno.descripcion}</div>
-                </div>
-            `).join('')}
-        </div>
-        <button class="btn btn-danger" onclick="logout()" style="margin-top: 20px;">Cancelar</button>
-    `;
-}
-
-// ... (Otras funciones auxiliares)
-
-// === FUNCIÓN AUXILIAR: GUARDAR TURNO EN SESIÓN ===
-function guardarTurnoEnSesion(turnoKey) {
-    const ahora = new Date();
-    const diaActual = ahora.toDateString();
-    
-    // Guardar la clave del turno y el día actual en el almacenamiento local
-    sessionStorage.setItem('attf_last_turn', JSON.stringify({
-        turnoKey: turnoKey,
-        dia: diaActual
-    }));
-}
-
-async function seleccionarTurno(turnoKey) {
-    const turno = TURNOS_ATTF[turnoKey];
-    const ahora = new Date();
-    
-    if (currentUser.turnoAsignado) {
-        alert('Error: Ya tiene un turno asignado y activo. Debe cerrar sesión para finalizar el turno actual.');
-        return; 
-    }
-    
-    try {
-        // Guardar turno en la base de datos
-        const fechaActual = ahora.toISOString().split('T')[0];
-        const { error } = await supabaseClient
-            .from('usuarios')
-            .update({
-                turno_actual: turnoKey,
-                turno_fecha: fechaActual,
-                turno_hora_inicio: ahora.toISOString()
-            })
-            .eq('id', currentUser.id);
-        
-        if (error) {
-            console.error('Error guardando turno en BD:', error);
-            alert('Error al asignar el turno. Intente nuevamente.');
-            return;
-        }
-        
-        console.log('✅ Turno guardado en BD:', turnoKey);
-        
-    } catch (error) {
-        console.error('Error crítico guardando turno:', error);
-        alert('Error de conexión al asignar turno.');
-        return;
-    }
-    
-    // Asignar turno localmente
-    currentUser.turnoAsignado = turnoKey;
-    currentUser.turnoNombre = turno.nombre;
-    currentUser.turno_fecha = ahora.toISOString().split('T')[0];
-    
-    sessionStorage.setItem('attf_last_turn', JSON.stringify({
-        turnoKey: turnoKey,
-        dia: ahora.toDateString(),
-        horaInicio: ahora.toISOString()
-    }));
-    
-    // === VERIFICAR DÍAS DE DESCANSO ANTES DE DAR ACCESO ===
-    const fechaHoy = ahora.toISOString().split('T')[0];
-    
-    // Verificar si es día de descanso
-    if (verificarDiaDescanso(currentUser)) {
-        alert('Hoy es uno de tus días de descanso. No puedes acceder al sistema.');
-        logout();
-        return;
-    }
-    
-    // Verificar si necesita elegir días de descanso
-    if (!currentUser.descanso_fecha_fin || currentUser.descanso_fecha_fin < fechaHoy) {
-        mostrarSeleccionDiasDescanso();
-        return;
-    }
-    
-    // Si todo está bien, dar acceso al menú
-    setInterval(verificarCorteTurno, 5 * 60 * 1000);
-    
-    document.getElementById('currentUser').textContent = `Bienvenido, ${currentUser.usuario} - ${turno.nombre}`;
-    document.getElementById('userInfo').classList.remove('hidden');
-    document.getElementById('loginSection').style.display = 'none';
-    document.getElementById('tableSelectionSection').style.display = 'block';
-    
-    console.log('🔧 Filtrando tablas según rol:', currentUser.rol);
-    mostrarTablasSegunRol();
-    
-    iniciarVerificacionSesion();
-    guardarDatosOffline();
-}
 
 
-
-function programarCierreSesion(turno) {
-    const ahora = new Date();
-    let fechaCierre = new Date();
-    
-    if (turno.horaFinGracia < turno.horaInicioGracia) {
-        // Turno nocturno: cierre al día siguiente
-        if (ahora.getHours() >= turno.horaInicioGracia) {
-            fechaCierre.setDate(fechaCierre.getDate() + 1);
-        }
-        fechaCierre.setHours(turno.horaFinGracia, 0, 0, 0);
-    } else {
-        // Turno diurno
-        fechaCierre.setHours(turno.horaFinGracia, 0, 0, 0);
-    }
-    
-    const tiempoRestante = fechaCierre.getTime() - ahora.getTime();
-    
-    if (tiempoRestante > 0) {
-        setTimeout(() => {
-            alert('Su turno ha terminado. La sesión se cerrará automáticamente.');
-            logout();
-        }, tiempoRestante);
-    }
-}
 
 
 
@@ -1854,1107 +2492,385 @@ async function logout() {
       selectedTable = null;
     }
 
-    // === FUNCIÓN PRINCIPAL DE BÚSQUEDA (FINAL Y UNIVERSAL) ===
+   // ===================================================================
+// 🔍 FUNCIÓN UNIFICADA DE BÚSQUEDA (VERSIÓN COMPLETA Y OPTIMIZADA)
+// ===================================================================
+
 async function buscar(campo, tipo) {
     await renovarSesion();
     await capturarCoordenadasGPS(); 
     
     const valor = document.getElementById(`search${campo}`).value.trim();
     if (!valor) {
-      alert(`Por favor ingrese un valor para ${campo}`);
-      return;
+        alert(`Por favor ingrese un valor para ${campo}`);
+        return;
     }
 
-    // 💡 CAMBIO CLAVE: Contamos la búsqueda AHORA, después de la validación del valor
-    // Esto asegura que cada búsqueda válida (simple o múltiple) sea contada.
     await incrementarContadorBusquedas();
     
     const valores = valor.includes(',') ? valor.split(',').map(v => v.trim()).filter(v => v) : [valor];
     
     if (valores.length > 1) {
-      // Búsqueda Múltiple KML
-      await busquedaMultipleKML(campo, valores);
+        // Búsqueda Múltiple KML
+        await busquedaMultipleKML(campo, valores);
     } else {
-      // Búsqueda principal inmediata (búsqueda simple)
-      let query = supabaseClient.from(selectedTable).select('*');
-      if (tipo === 'exact') query = query.eq(campo, valor);
-      else query = query.ilike(campo, `%${valor}%`);
+        // Búsqueda simple
+        let query = supabaseClient.from(selectedTable).select('*');
+        if (tipo === 'exact') query = query.eq(campo, valor);
+        else query = query.ilike(campo, `%${valor}%`);
 
-      const { data, error } = await query;
-      if (error) {
-        alert('Error al buscar: ' + error.message);
+        const { data, error } = await query;
+        if (error) {
+            alert('Error al buscar: ' + error.message);
+            return;
+        }
+        
+        mostrarResultados(data || []);
+        
+        // Búsqueda adicional automática en tablas relacionadas
+        busquedaEnTablasRelacionadas(campo, valor, data || []);
+    }
+}
+
+// ===================================================================
+// 📊 MOSTRAR RESULTADOS PRINCIPALES
+// ===================================================================
+
+function mostrarResultados(resultados) {
+    const container = document.getElementById('searchResults');
+    const config = tableConfigs[selectedTable];
+    
+    consultasData = resultados;
+
+    if (resultados.length === 0) {
+        container.innerHTML = '<div class="result-card">❌ No se encontraron resultados</div>';
         return;
-      }
-      
-      // Mostrar resultados principales inmediatamente
-      mostrarResultados(data || []);
-      
-      // Si estamos en consultas_servicios, iniciar búsqueda adicional
-      if (selectedTable === 'consultas_servicios') {
-        busquedaAdicionalProgresiva(campo, valor);
-      }
+    }
+
+    let html = `<div class="result-header">✅ Se encontraron ${resultados.length} resultado(s)</div>`;
+    
+    resultados.forEach((item, index) => {
+        html += `<div class="result-card"><div class="result-header">Resultado ${index + 1}</div>`;
+        config.resultFields.forEach(field => {
+            let valor = String(item[field] || 'N/A');
+            
+            if ((field === 'Comentario' || field === 'ComentarioGeneral') && valor !== 'N/A') { 
+                valor = formatearComentario(valor);
+                html += `<div class="result-item"><strong>${field}:</strong><div style="margin-left: 10px; line-height: 1.6;">${valor}</div></div>`;
+            } else {
+                html += `<div class="result-item"><strong>${field}:</strong> ${valor}</div>`;
+            }
+        });
+        
+        html += generarBotonesAccion(item, index, config);
+        html += '</div>'; // Cierre result-card
+    });
+
+    // Botón KML si hay coordenadas
+    if (tieneCoordenadasValidas(resultados)) {
+        html += `<div style="margin-top: 20px; text-align: center; padding: 0 10px;">
+                    <button class="btn btn-secondary" onclick="descargarKML()" style="width: 100%; max-width: 280px;">📥 Descargar KML</button>
+                 </div>`;
+    }
+    
+    container.innerHTML = html;
+}
+
+// ===================================================================
+// 🎨 FUNCIÓN AUXILIAR: FORMATEAR COMENTARIOS
+// ===================================================================
+
+function formatearComentario(valor) {
+    return valor
+        .replace(/\*([^*]+)\*/g, '<br><strong>$1</strong>')
+        .replace(/OS SAP/g, '<br><strong>OS SAP</strong>')
+        .replace(/Fecha Generacion/g, '<br><strong>Fecha Generación:</strong>')
+        .replace(/Medidor según SAP/g, '<br><strong>Medidor según SAP:</strong>')
+        .replace(/Cantidad OS/g, '<br><strong>Cantidad OS:</strong>')
+        .replace(/Comentario Generacion/g, '<br><strong>Comentario Generación:</strong>')
+        .replace(/Comentario Incumplida o Adicional/g, '<br><strong>Comentario Incumplida o Adicional:</strong>')
+        .replace(/Comentario de Visita Fallida/g, '<br><strong>Comentario de Visita Fallida:</strong>')
+        .replace(/Comentario de visita Anterior/g, '<br><strong>Comentario de visita Anterior:</strong>')
+        .replace(/Foto Medidor o Suministr/g, '<br><strong>Foto Medidor o Suministro:</strong>')
+        .replace(/Coordenas Contiguo Previa/g, '<br><strong>Coordenadas Contiguo Previa:</strong>')
+        .replace(/Coordenadas Visita Anterior/g, '<br><strong>Coordenadas Visita Anterior:</strong>')
+        .replace(/Coordeadas lector/g, '<br><strong>Coordenadas lector:</strong>')
+        .replace(/Coordenadas de OS según ATOMO/g, '<br><strong>Coordenadas de OS según ATOMO:</strong>')
+        .replace(/Fecha Eje\. OS anterior/g, '<br><strong>Fecha Eje. OS anterior:</strong>')
+        .replace(/Unidad que Eje\. OS Anterior/g, '<br><strong>Unidad que Eje. OS Anterior:</strong>')
+        .replace(/Dias (\d+)/g, '<br><strong>Días:</strong> $1')
+        .replace(/lectura[:\s]*(\d+)/gi, '<br><strong>Lectura:</strong> $1')
+        .replace(/Sin Datos/g, '<br><em>Sin Datos</em>')
+        .replace(/Sin Comentario/g, '<br><em>Sin Comentario</em>')
+        .replace(/Sin Coordenadas/g, '<br><em>Sin Coordenadas</em>')
+        .replace(/Sin Foto/g, '<br><em>Sin Foto</em>')
+        .replace(/Nombre del Cliente/g, '<br><strong>Nombre del Cliente:</strong>')
+        .replace(/Cuenta contrato/g, '<br><strong>Cuenta contrato:</strong>')
+        .replace(/Dirección del cliente/g, '<br><strong>Dirección del cliente:</strong>')
+        .replace(/Medidor (\d+)/g, '<br><strong>Medidor:</strong> $1')
+        .replace(/Numero de OS/g, '<br><strong>Número de OS:</strong>')
+        .replace(/Tipologia/g, '<br><strong>Tipología:</strong>')
+        .replace(/Comentario de Cierre/g, '<br><strong>Comentario de Cierre:</strong>')
+        .replace(/coordenadas del suministro/g, '<br><strong>Coordenadas del suministro:</strong>')
+        .replace(/Comentario de Generacion/g, '<br><strong>Comentario de Generación:</strong>')
+        .replace(/Coordenadas De cierre/g, '<br><strong>Coordenadas De cierre:</strong>')
+        .replace(/Fecha Ejec/g, '<br><strong>Fecha Ejec:</strong>')
+        .replace(/Ejecutada por/g, '<br><strong>Ejecutada por:</strong>')
+        .replace(/(https?:\/\/[^\s]+)/g, '<br><a href="$1" target="_blank" style="color: #3b54d3; text-decoration: underline; font-weight: 600;">🔗 Ver enlace</a>');
+}
+
+// ===================================================================
+// 🔘 FUNCIÓN AUXILIAR: GENERAR BOTONES DE ACCIÓN
+// ===================================================================
+
+function generarBotonesAccion(item, index, config) {
+    let html = '<div class="action-buttons">';
+    
+    config.actions.forEach(action => {
+        const val = item[action];
+        if (!val) return;
+
+        const isCoordenadasLector = (action === 'Coordenadas' || action === 'CoordenadasLector');
+        const isCoordenadasGis = (action === 'Coordenadasgis' || action === 'CoordenadasGis');
+        const isFotoLink = (action === 'FotoLink' || action === 'fotolink');
+        const isGrafica = (action === 'Grafica');
+        
+        // Roles sin acceso a gráficas
+        const sinGraficas = ['Lectura', 'Contratista', 'ATTF', 'Poda'];
+        const puedeVerGraficas = !sinGraficas.includes(currentUser.rol);
+        
+        if (isCoordenadasLector) {
+            html += `<button class="btn btn-secondary" onclick="abrirCoordenadas('${val}')">📍 Coordenadas Lector</button>`;
+        } else if (isCoordenadasGis) {
+            html += `<button class="btn btn-secondary" onclick="abrirCoordenadas('${val}')">🗺️ Coordenadas GIS</button>`;
+        } else if (isFotoLink) {
+            html += `<button class="btn btn-secondary" onclick="verFoto('${val}')">📸 Ver Foto</button>`;
+        } else if (isGrafica && puedeVerGraficas) {
+            html += `<button class="btn btn-secondary" onclick="verGraficasPorIndice(${index})">📊 Ver Consumos</button>`;
+        }
+    });
+    
+    html += '</div></div>'; // Cierre action-buttons y result-card
+    return html;
+}
+
+// ===================================================================
+// 🔍 BÚSQUEDA EN TABLAS RELACIONADAS (UNIFICADA)
+// ===================================================================
+
+async function busquedaEnTablasRelacionadas(campo, valor, resultadoPrincipal) {
+    // Determinar si se debe buscar OS o búsqueda adicional general
+    const esOS = resultadoPrincipal.length > 0 && 
+                 (resultadoPrincipal[0].OSATMO || resultadoPrincipal[0].OSSAP || resultadoPrincipal[0].OSATOMO);
+    
+    if (esOS) {
+        // Búsqueda de OS relacionadas
+        setTimeout(() => {
+            buscarOSRelacionadas(resultadoPrincipal[0]).then(relacionadas => {
+                if (relacionadas) {
+                    mostrarResultadosRelacionados(relacionadas, resultadoPrincipal[0]);
+                }
+            });
+        }, 2000);
+    } else if (selectedTable === 'consultas_servicios') {
+        // Búsqueda adicional en OS Pendientes y OSCerradas
+        mostrarIndicadorBusqueda();
+        
+        const tablasAdicionales = ['OS Pendientes', 'OSCerradas'];
+        const resultadosAdicionales = {};
+        
+        for (const tabla of tablasAdicionales) {
+            const config = tableConfigs[tabla];
+            if (!config) continue;
+            
+            const campoEquivalente = encontrarCampoEquivalente(campo, config);
+            if (!campoEquivalente) continue;
+            
+            let query = supabaseClient.from(tabla).select('*');
+            query = query.eq(campoEquivalente, valor);
+            
+            const { data, error } = await query;
+            if (!error && data && data.length > 0) {
+                resultadosAdicionales[tabla] = data;
+            }
+        }
+        
+        ocultarIndicadorBusqueda();
+        
+        if (Object.keys(resultadosAdicionales).length > 0) {
+            mostrarBotonesResultadosAdicionales(resultadosAdicionales);
+        }
     }
 }
 
-
-    function mostrarResultados(resultados) {
-  const container = document.getElementById('searchResults');
-  const config = tableConfigs[selectedTable];
-  
-  // Guardamos los datos para uso posterior
-  consultasData = resultados;
-
-  if (resultados.length === 0) {
-    container.innerHTML = '<div class="result-card">❌ No se encontraron resultados</div>';
-    return;
-  }
-
-  let html = `<div class="result-header">✅ Se encontraron ${resultados.length} resultado(s)</div>`;
-  
-  resultados.forEach((item, index) => {
-    html += `<div class="result-card"><div class="result-header">Resultado ${index + 1}</div>`;
-    config.resultFields.forEach(field => {
-      let valor = item[field] || 'N/A';
-      
-      // Formatear especialmente el campo Comentario
-      if ((field === 'Comentario' || field === 'ComentarioGeneral') && valor !== 'N/A') { 
-        // Reemplazar patrones comunes para mejorar legibilidad
-        valor = valor
-          .replace(/\*([^*]+)\*/g, '<br><strong>$1</strong>') // *texto* -> negrita con salto
-          .replace(/OS SAP/g, '<br><strong>OS SAP</strong>')
-          .replace(/Fecha Generacion/g, '<br><strong>Fecha Generación:</strong>')
-          .replace(/Medidor según SAP/g, '<br><strong>Medidor según SAP:</strong>')
-          .replace(/Cantidad OS/g, '<br><strong>Cantidad OS:</strong>')
-          .replace(/Comentario Generacion/g, '<br><strong>Comentario Generación:</strong>')
-          .replace(/Comentario Incumplida o Adicional/g, '<br><strong>Comentario Incumplida o Adicional:</strong>')
-          .replace(/Comentario de Visita Fallida/g, '<br><strong>Comentario de Visita Fallida:</strong>')
-          .replace(/Comentario de visita Anterior/g, '<br><strong>Comentario de visita Anterior:</strong>')
-          .replace(/Foto Medidor o Suministr/g, '<br><strong>Foto Medidor o Suministro:</strong>')
-          .replace(/Coordenas Contiguo Previa/g, '<br><strong>Coordenadas Contiguo Previa:</strong>')
-          .replace(/Coordenadas Visita Anterior/g, '<br><strong>Coordenadas Visita Anterior:</strong>')
-          .replace(/Coordeadas lector/g, '<br><strong>Coordenadas lector:</strong>')
-          .replace(/Coordenadas de OS según ATOMO/g, '<br><strong>Coordenadas de OS según ATOMO:</strong>')
-          .replace(/Fecha Eje\. OS anterior/g, '<br><strong>Fecha Eje. OS anterior:</strong>')
-          .replace(/Unidad que Eje\. OS Anterior/g, '<br><strong>Unidad que Eje. OS Anterior:</strong>')
-          .replace(/Dias (\d+)/g, '<br><strong>Días:</strong> $1')
-          .replace(/lectura[:\s]*(\d+)/gi, '<br><strong>Lectura:</strong> $1')
-          .replace(/Sin Datos/g, '<br><em>Sin Datos</em>')
-          .replace(/Sin Comentario/g, '<br><em>Sin Comentario</em>')
-          .replace(/Sin Coordenadas/g, '<br><em>Sin Coordenadas</em>')
-          .replace(/Sin Foto/g, '<br><em>Sin Foto</em>')
-          .replace(/Nombre del Cliente/g, '<br><strong>Nombre del Cliente:</strong>')
-          .replace(/Cuenta contrato/g, '<br><strong>Cuenta contrato:</strong>')
-          .replace(/Dirección del cliente/g, '<br><strong>Dirección del cliente:</strong>')
-          .replace(/Medidor (\d+)/g, '<br><strong>Medidor:</strong> $1')
-          .replace(/Numero de OS/g, '<br><strong>Número de OS:</strong>')
-          .replace(/Tipologia/g, '<br><strong>Tipología:</strong>')
-          .replace(/Comentario de Cierre/g, '<br><strong>Comentario de Cierre:</strong>')
-          .replace(/coordenadas del suministro/g, '<br><strong>Coordenadas del suministro:</strong>')
-          .replace(/Comentario de Generacion/g, '<br><strong>Comentario de Generación:</strong>')
-          .replace(/Coordenadas De cierre/g, '<br><strong>Coordenadas De cierre:</strong>')
-          .replace(/Fecha Ejec/g, '<br><strong>Fecha Ejec:</strong>')
-          .replace(/Ejecutada por/g, '<br><strong>Ejecutada por:</strong>')
-          .replace(/Nombre Cliente/g, '<br><em>Nombre Cliente</em>')
-          .replace(/Cuenta Contrato/g, '<br><em>Cuenta Contrato</em>')
-          .replace(/Direccion/g, '<br><em>Direccion</em>')
-          .replace(/Tarifa/g, '<br><em>Tarifa</em>')
-          .replace(/Medidor/g, '<br><em>Medidor</em>')
-          .replace(/Fecha Lect/g, '<br><em>Fecha Lect</em>')
-          .replace(/Proteccion que lo Alimenta/g, '<br><em>Proteccion que lo Alimenta</em>')
-          .replace(/Propiedad/g, '<br><em>Propiedad</em>')
-          .replace(/Voltaje Primario Nominal/g, '<br><em>Voltaje Primario Nominal</em>')
-          .replace(/Capacidad Sum/g, '<br><em>Capacidad Sum</em>')
-          .replace(/Circuito/g, '<br><em>Circuito</em>')
-          .replace(/Uicacion/g, '<br><em>Uicacion</em>')
-          .replace(/Cantidad de clientes/g, '<br><em>Cantidad de clientes</em>')
-          .replace(/Estructura Tx/g, '<br><em>Estructura Tx</em>')
-          .replace(/Primary Phase ConcatSet/g, '<br><em>Primary Phase ConcatSet</em>')
-          .replace(/Usos/g, '<br><em>Usos</em>')
-          .replace(/Voltaje/g, '<br><em>Voltaje</em>')
-          .replace(/Voltaje Primario Nominal/g, '<br><em>Voltaje Primario Nominal</em>')
-          .replace(/Estructura/g, '<br><em>Estructura</em>')
-          .replace(/Aes Circuito/g, '<br><em>Aes Circuito</em>')
-          .replace(/Municipio/g, '<br><em>Municipio</em>')
-          .replace(/Fecha Ejec/g, '<br><em>Fecha Ejeco</em>')
-          .replace(/Fecha Gene/g, '<br><em>Fecha Gene</em>')
-          .replace(/OS ATOMO/g, '<br><em>OS ATOMO</em>')
-          .replace(/NIC(Contract Account)/g, '<br><em>NIC(Contract Account)</em>')
-          .replace(/Comentario de Previa/g, '<br><em>Comentario de Previa</em>')
-          .replace(/Comentario Generacion/g, '<br><em>Comentario Generacion</em>')
-          .replace(/Coordenadas/g, '<br><em>Coordenadas</em>')
-          .replace(/Coordenadas según ATOMO/g, '<br><em>Coordenadas según ATOMO</em>')
-          .replace(/(https?:\/\/[^\s]+)/g, '<br><a href="$1" target="_blank" style="color: #3b54d3; text-decoration: underline; font-weight: 600;">🔗 Ver enlace</a>');
-        
-        html += `<div class="result-item"><strong>${field}:</strong><div style="margin-left: 10px; line-height: 1.6;">${valor}</div></div>`;
-      } else {
-        html += `<div class="result-item"><strong>${field}:</strong> ${valor}</div>`;
-      }
-    });
-    
-    // Verificar si es una búsqueda por OS para buscar relacionadas (solo en consultas_servicios)
-    // Verificar si es una búsqueda por OS para buscar relacionadas (en todas las tablas de OS)
-if ((selectedTable === 'consultas_servicios' || selectedTable === 'OS Pendientes' || selectedTable === 'OSCerradas') && 
-    (item.OSATMO || item.OSSAP || item.OSATOMO)) {
-  setTimeout(() => {
-    buscarOSRelacionadas(item).then(relacionadas => {
-      if (relacionadas) {
-        mostrarOSRelacionadas(relacionadas, 'OS', item);
-      }
-    });
-  }, 2000);
-}
-    
-    html += '<div class="action-buttons">';
-
-config.actions.forEach(action => {
-    const val = item[action];
-    if (!val) return;
-
-    const isCoordenadasLector = (action === 'Coordenadas' || action === 'CoordenadasLector');
-    const isCoordenadasGis = (action === 'Coordenadasgis' || action === 'CoordenadasGis');
-    const isFotoLink = (action === 'FotoLink' || action === 'fotolink');
-    const isGrafica = (action === 'Grafica');
-    
-    // 1. ROL LECTURA
-    if (currentUser.rol === 'Lectura') {
-        if (selectedTable === 'consultas_servicios') {
-            if (isCoordenadasLector) {
-                html += `<button class="btn btn-secondary" onclick="abrirCoordenadas('${val}')">📍 Coordenadas Lector</button>`;
-            } else if (isCoordenadasGis) {
-                html += `<button class="btn btn-secondary" onclick="abrirCoordenadas('${val}')">🗺️ Coordenadas GIS</button>`;
-            } else if (isFotoLink) {
-                html += `<button class="btn btn-secondary" onclick="verFoto('${val}')">📸 Ver Foto</button>`;
-            }
-        }
-        
-    // 2. ROL CONTRATISTA
-    } else if (currentUser.rol === 'Contratista') {
-        if (selectedTable === 'consultas_servicios') {
-            if (isCoordenadasLector) {
-                html += `<button class="btn btn-secondary" onclick="abrirCoordenadas('${val}')">📍 Coordenadas Lector</button>`;
-            } else if (isCoordenadasGis) {
-                html += `<button class="btn btn-secondary" onclick="abrirCoordenadas('${val}')">🗺️ Coordenadas GIS</button>`;
-            } else if (isFotoLink) {
-                html += `<button class="btn btn-secondary" onclick="verFoto('${val}')">📸 Ver Foto</button>`;
-            }
-            // NOTA: No se muestra "Gráfica" para Contratista
-        } else if (selectedTable === 'TX y Cortes') {
-            if (isCoordenadasLector) {
-                html += `<button class="btn btn-secondary" onclick="abrirCoordenadas('${val}')">📍 Ver Ubicación</button>`;
-            }
-        } else {
-            if (action.toLowerCase().includes('coordenadas')) {
-                html += `<button class="btn btn-secondary" onclick="abrirCoordenadas('${val}')">📍 Coordenadas</button>`;
-            } else if (isFotoLink) {
-                html += `<button class="btn btn-secondary" onclick="verFoto('${val}')">📸 Ver Foto</button>`;
-            }
-        }
-        
-    // 3. ROL ATTF (SIN ACCESO A GRÁFICAS)
-    } else if (currentUser.rol === 'ATTF') {
-        if (selectedTable === 'consultas_servicios') {
-            if (isCoordenadasLector) {
-                html += `<button class="btn btn-secondary" onclick="abrirCoordenadas('${val}')">📍 Coordenadas Lector</button>`;
-            } else if (isCoordenadasGis) {
-                html += `<button class="btn btn-secondary" onclick="abrirCoordenadas('${val}')">🗺️ Coordenadas GIS</button>`;
-            } else if (isFotoLink) {
-                html += `<button class="btn btn-secondary" onclick="verFoto('${val}')">📸 Ver Foto</button>`;
-            }
-            // NO mostrar gráficas para ATTF
-        } else if (selectedTable === 'TX y Cortes') {
-            if (isCoordenadasLector) {
-                html += `<button class="btn btn-secondary" onclick="abrirCoordenadas('${val}')">📍 Ver Ubicación</button>`;
-            }
-        }
-        
-    // 4. ROL PODA (SIN ACCESO A GRÁFICAS)
-    } else if (currentUser.rol === 'Poda') {
-        if (selectedTable === 'consultas_servicios') {
-            if (isCoordenadasLector) {
-                html += `<button class="btn btn-secondary" onclick="abrirCoordenadas('${val}')">📍 Coordenadas Lector</button>`;
-            } else if (isCoordenadasGis) {
-                html += `<button class="btn btn-secondary" onclick="abrirCoordenadas('${val}')">🗺️ Coordenadas GIS</button>`;
-            } else if (isFotoLink) {
-                html += `<button class="btn btn-secondary" onclick="verFoto('${val}')">📸 Ver Foto</button>`;
-            }
-            // NO mostrar gráficas para Poda
-        } else if (selectedTable === 'TX y Cortes') {
-            if (isCoordenadasLector) {
-                html += `<button class="btn btn-secondary" onclick="abrirCoordenadas('${val}')">📍 Ver Ubicación</button>`;
-            }
-        }
-        
-    // 5. ROL SUPERVISOR Y OTROS (ACCESO COMPLETO INCLUYENDO GRÁFICAS)
-    } else { 
-        if (selectedTable === 'consultas_servicios') {
-            if (isCoordenadasLector) {
-                html += `<button class="btn btn-secondary" onclick="abrirCoordenadas('${val}')">📍 Coordenadas Lector</button>`;
-            } else if (isCoordenadasGis) {
-                html += `<button class="btn btn-secondary" onclick="abrirCoordenadas('${val}')">🗺️ Coordenadas GIS</button>`;
-            } else if (isFotoLink) {
-                html += `<button class="btn btn-secondary" onclick="verFoto('${val}')">📸 Ver Foto</button>`;
-            } else if (isGrafica) {
-                // Solo Supervisor y Consulta tienen acceso a Gráficas
-                html += `<button class="btn btn-secondary" onclick="verGraficasPorIndice(${index})">📊 Ver Consumos</button>`;
-            }
-        } else if (selectedTable === 'TX y Cortes') {
-            if (isCoordenadasLector) {
-                html += `<button class="btn btn-secondary" onclick="abrirCoordenadas('${val}')">📍 Ver Ubicación</button>`;
-            }
-        } else {
-            if (action.toLowerCase().includes('coordenadas')) {
-                html += `<button class="btn btn-secondary" onclick="abrirCoordenadas('${val}')">📍 Coordenadas</button>`;
-            } else if (isFotoLink) {
-                html += `<button class="btn btn-secondary" onclick="verFoto('${val}')">📸 Ver Foto</button>`;
-            }
-        }
-    }
-});
-    
-html += '</div></div>'; // Cierre de action-buttons y result-card
-
-// Cierre del forEach de los resultados
-});
-
-  // Verificar si hay coordenadas válidas antes de mostrar el botón KML
-  const tieneCoordenadasValidas = resultados.some(item => {
-    const coordenadas = item.Coordenadas || item.coordenadas || item.Coordenadasgis || item.coordenadasgis;
-    return coordenadas && coordenadas.includes(',');
-  });
-
-  if (tieneCoordenadasValidas) {
-    html += '<div style="margin-top: 20px; text-align: center; padding: 0 10px;">';
-    html += '<button class="btn btn-secondary" onclick="descargarKML()" style="width: 100%; max-width: 280px;">📥 Descargar KML</button>';
-    html += '</div>';
-  }
-  
-  container.innerHTML = html;
-}
+// ===================================================================
+// 🔗 BUSCAR OS RELACIONADAS (OPTIMIZADA)
+// ===================================================================
 
 async function buscarOSRelacionadas(osData) {
-  const osNumero = osData.OSATMO || osData.OSSAP || osData.OSATOMO;
-  if (!osNumero) return null;
-  
-  console.log('=== DEBUG OS RELACIONADAS ===');
-  console.log('OS Original:', osNumero);
-  console.log('Datos originales:', osData);
-  
-  const criteriosBusqueda = [];
-  
-  // Verificar CuentaContrato
-  console.log('CuentaContrato:', osData.CuentaContrato, 'Tipo:', typeof osData.CuentaContrato);
-  if (osData.CuentaContrato && 
-      String(osData.CuentaContrato).trim() !== '' && 
-      String(osData.CuentaContrato) !== '0' && 
-      String(osData.CuentaContrato) !== '200000000000') {
-    criteriosBusqueda.push({campo: 'CuentaContrato', valor: osData.CuentaContrato});
-    console.log('✓ CuentaContrato válido:', osData.CuentaContrato);
-  } else {
-    console.log('✗ CuentaContrato filtrado');
-  }
-  
-  // Verificar Medidor
-  console.log('Medidor:', osData.Medidor, 'Tipo:', typeof osData.Medidor);
-  if (osData.Medidor && 
-      String(osData.Medidor).trim() !== '' && 
-      String(osData.Medidor) !== '0') {
-    criteriosBusqueda.push({campo: 'Medidor', valor: osData.Medidor});
-    console.log('✓ Medidor válido:', osData.Medidor);
-  } else {
-    console.log('✗ Medidor filtrado');
-  }
-  
-  // Verificar NombreCliente
-  console.log('NombreCliente:', osData.NombreCliente, 'Tipo:', typeof osData.NombreCliente);
-  if (osData.NombreCliente && 
-      String(osData.NombreCliente).trim() !== '' && 
-      String(osData.NombreCliente) !== '0' &&
-      String(osData.NombreCliente).toLowerCase() !== 'sin nombre') {
-    criteriosBusqueda.push({campo: 'NombreCliente', valor: osData.NombreCliente});
-    console.log('✓ NombreCliente válido:', osData.NombreCliente);
-  } else {
-    console.log('✗ NombreCliente filtrado');
-  }
-  
-  console.log('Criterios de búsqueda finales:', criteriosBusqueda);
-  
-  if (criteriosBusqueda.length === 0) {
-    console.log('❌ No hay criterios válidos para buscar');
-    return null;
-  }
-  
-  // Mostrar indicador de carga  
-  mostrarIndicadorBusquedaAdicional();
-  
-  const relacionadasPorTabla = {};
-  
-  let tablasBusqueda = [];
-
-  if (selectedTable === 'OS Pendientes') {
-    tablasBusqueda = ['OS Pendientes', 'OSCerradas'];
-  } else if (selectedTable === 'OSCerradas') {
-    tablasBusqueda = ['OS Pendientes', 'OSCerradas'];
-  } else if (selectedTable === 'consultas_servicios') {
-    tablasBusqueda = ['OS Pendientes', 'OSCerradas'];
-  } else {
-    tablasBusqueda = [];
-  }
-
-  for (const tabla of tablasBusqueda) {
-    console.log(`🔍 Buscando en tabla: ${tabla}`);
+    const osNumero = osData.OSATMO || osData.OSSAP || osData.OSATOMO;
+    if (!osNumero) return null;
     
-    // Inicializar el array de esta tabla una sola vez
-    if (!relacionadasPorTabla[tabla]) {
-      relacionadasPorTabla[tabla] = [];
+    const criteriosBusqueda = [];
+    
+    // Validar CuentaContrato
+    if (osData.CuentaContrato && 
+        String(osData.CuentaContrato).trim() !== '' && 
+        String(osData.CuentaContrato) !== '0' && 
+        String(osData.CuentaContrato) !== '200000000000') {
+        criteriosBusqueda.push({campo: 'CuentaContrato', valor: osData.CuentaContrato});
     }
-      
-    for (const criterio of criteriosBusqueda) {
-      try {
-        const campoEquivalente = encontrarCampoEquivalente(criterio.campo, tableConfigs[tabla]);
-        if (!campoEquivalente) continue;
+    
+    // Validar Medidor
+    if (osData.Medidor && 
+        String(osData.Medidor).trim() !== '' && 
+        String(osData.Medidor) !== '0') {
+        criteriosBusqueda.push({campo: 'Medidor', valor: osData.Medidor});
+    }
+    
+    // Validar NombreCliente
+    if (osData.NombreCliente && 
+        String(osData.NombreCliente).trim() !== '' && 
+        String(osData.NombreCliente) !== '0' &&
+        String(osData.NombreCliente).toLowerCase() !== 'sin nombre') {
+        criteriosBusqueda.push({campo: 'NombreCliente', valor: osData.NombreCliente});
+    }
+    
+    if (criteriosBusqueda.length === 0) return null;
+    
+    mostrarIndicadorBusqueda();
+    
+    const relacionadasPorTabla = {};
+    const tablasBusqueda = (selectedTable === 'OS Pendientes' || selectedTable === 'OSCerradas' || selectedTable === 'consultas_servicios') 
+                           ? ['OS Pendientes', 'OSCerradas'] 
+                           : [];
+
+    for (const tabla of tablasBusqueda) {
+        if (!relacionadasPorTabla[tabla]) relacionadasPorTabla[tabla] = [];
         
-        console.log(`  🔎 Buscando por ${campoEquivalente} = ${criterio.valor}`);
-        
-        const { data, error } = await supabaseClient
-          .from(tabla)
-          .select('*')
-          .eq(campoEquivalente, criterio.valor);
-        
-        if (error) {
-          console.log(`  ❌ Error en ${tabla}:`, error);
-          continue;
-        }
-        
-        if (data && data.length > 0) {
-          console.log(`  ✅ Encontrados ${data.length} registros en ${tabla} por ${campoEquivalente}`);
-          
-          data.forEach(item => {
-            const itemOS = item.OSATMO || item.OSSAP || item.OSATOMO;
-            console.log(`    📋 Revisando OS: ${itemOS}`);
+        for (const criterio of criteriosBusqueda) {
+            const campoEquivalente = encontrarCampoEquivalente(criterio.campo, tableConfigs[tabla]);
+            if (!campoEquivalente) continue;
             
-            // Excluir solo la OS exacta que se está consultando
-            const esMismaOS = (selectedTable === tabla && itemOS === osNumero);
-
-            if (itemOS && !esMismaOS) {
-              // Verificar duplicados de manera más específica usando ID único o combinación de campos
-              const claveUnica = `${tabla}-${itemOS}-${item.CuentaContrato}-${item.Medidor}`;
-              const existe = relacionadasPorTabla[tabla].find(r => {
-                const rOS = r.OSATMO || r.OSSAP || r.OSATOMO;
-                const claveExistente = `${tabla}-${rOS}-${r.CuentaContrato}-${r.Medidor}`;
-                return claveExistente === claveUnica;
-              });
-              
-              if (!existe) {
-                relacionadasPorTabla[tabla].push({
-                  ...item, 
-                  criterioRelacion: criterio.campo,
-                  tablaOrigen: tabla
-                });
-                console.log(`    ✅ Agregada OS relacionada: ${itemOS} desde ${tabla} (criterio: ${criterio.campo})`);
-              } else {
-                console.log(`    ⏭️ OS ya existe: ${itemOS} en ${tabla}`);
-              }
-            } else if (esMismaOS) {
-              console.log(`    ⏭️ Misma OS original: ${itemOS}`);
-            } else {
-              console.log(`    ⏭️ OS sin número válido: ${itemOS}`);
-            }
-          });
-        } else {
-          console.log(`  ❌ No se encontraron registros en ${tabla} para ${campoEquivalente} = ${criterio.valor}`);
+            const { data, error } = await supabaseClient
+                .from(tabla)
+                .select('*')
+                .eq(campoEquivalente, criterio.valor);
+            
+            if (error || !data) continue;
+            
+            data.forEach(item => {
+                const itemOS = item.OSATMO || item.OSSAP || item.OSATOMO;
+                const esMismaOS = (selectedTable === tabla && itemOS === osNumero);
+                
+                if (itemOS && !esMismaOS) {
+                    const claveUnica = `${tabla}-${itemOS}-${item.CuentaContrato}-${item.Medidor}`;
+                    const existe = relacionadasPorTabla[tabla].find(r => {
+                        const rOS = r.OSATMO || r.OSSAP || r.OSATOMO;
+                        return `${tabla}-${rOS}-${r.CuentaContrato}-${r.Medidor}` === claveUnica;
+                    });
+                    
+                    if (!existe) {
+                        relacionadasPorTabla[tabla].push({...item, criterioRelacion: criterio.campo, tablaOrigen: tabla});
+                    }
+                }
+            });
         }
-      } catch (error) {
-        console.log(`❌ Error buscando en tabla ${tabla}:`, error);
-        continue;
-      }
     }
     
-    console.log(`📊 Total encontrado en ${tabla}: ${relacionadasPorTabla[tabla].length}`);
-  }
-  
-  ocultarIndicadorBusquedaAdicional();
-  
-  console.log('=== RESULTADO FINAL ===');
-  console.log('Total OS relacionadas encontradas por tabla:', Object.keys(relacionadasPorTabla).length);
-  console.log('OS relacionadas:', relacionadasPorTabla);
-  console.log('========================');
-  
-  return Object.keys(relacionadasPorTabla).length > 0 ? relacionadasPorTabla : null;
+    ocultarIndicadorBusqueda();
+    return Object.keys(relacionadasPorTabla).length > 0 ? relacionadasPorTabla : null;
 }
 
+// ===================================================================
+// 📋 MOSTRAR RESULTADOS RELACIONADOS
+// ===================================================================
 
-      function mostrarOSRelacionadas(relacionadasPorTabla, criterioOriginal, datosOriginales) {
-  if (!relacionadasPorTabla || Object.keys(relacionadasPorTabla).length === 0) {
-    console.log('❌ No hay relacionadas para mostrar');
-    return;
-  }
-  
-  console.log('📊 Mostrando relacionadas:', relacionadasPorTabla);
-  
-  window.resultadosAdicionalesOS = relacionadasPorTabla;
-  const container = document.getElementById('searchResults');
-  
-  // Crear identificación del registro original
-  const osOriginal = datosOriginales.OSATMO || datosOriginales.OSSAP || datosOriginales.OSATOMO || 'N/A';
-  const clienteOriginal = datosOriginales.NombreCliente || 'N/A';
-  const cuentaOriginal = datosOriginales.CuentaContrato || 'N/A';
-  const medidorOriginal = datosOriginales.Medidor || 'N/A';
+function mostrarResultadosRelacionados(relacionadasPorTabla, datosOriginales) {
+    if (!relacionadasPorTabla || Object.keys(relacionadasPorTabla).length === 0) return;
+    
+    window.resultadosRelacionados = relacionadasPorTabla;
+    const container = document.getElementById('searchResults');
+    
+    const osOriginal = datosOriginales.OSATMO || datosOriginales.OSSAP || datosOriginales.OSATOMO || 'N/A';
+    const clienteOriginal = datosOriginales.NombreCliente || 'N/A';
+    const cuentaOriginal = datosOriginales.CuentaContrato || 'N/A';
+    const medidorOriginal = datosOriginales.Medidor || 'N/A';
 
-  let botonesHtml = `
-    <div class="result-card" style="background: #fff3cd; border: 2px solid #ffc107; margin-top: 15px;">
-      <div class="result-header">🔗 OS Relacionadas Encontradas</div>
-      <div style="background: #f8f9fa; padding: 10px; margin: 10px 0; border-radius: 8px; border-left: 4px solid #ffc107;">
-        <strong>Relacionadas para:</strong><br>
-        📋 OS: ${osOriginal}<br>
-        👤 Cliente: ${clienteOriginal}<br>
-        📄 Cuenta: ${cuentaOriginal}<br>
-        ⚡ Medidor: ${medidorOriginal}
-      </div>
-      <p>Se encontraron OS adicionales. Haz clic para ver detalles completos:</p>
-      <div class="action-buttons">
-  `;
-  
-  for (const [tabla, datos] of Object.entries(relacionadasPorTabla)) {
-    const config = tableConfigs[tabla];
-    const icono = config ? config.icon : '📋';
-    botonesHtml += `
-      <button class="btn btn-secondary" onclick="mostrarResultadosAdicionalesOS('${tabla}')">
-        ${icono} Ver OS en ${config.title} (${datos.length})
-      </button>
-    `;
-  }
-  
-  botonesHtml += `</div></div>`;
-  container.innerHTML += botonesHtml;
+    let html = `
+        <div class="result-card" style="background: #fff3cd; border: 2px solid #ffc107; margin-top: 15px;">
+            <div class="result-header">🔗 Información Relacionada Encontrada</div>
+            <div style="background: #f8f9fa; padding: 10px; margin: 10px 0; border-radius: 8px; border-left: 4px solid #ffc107;">
+                <strong>Relacionado con:</strong><br>
+                📋 OS: ${osOriginal}<br>
+                👤 Cliente: ${clienteOriginal}<br>
+                📄 Cuenta: ${cuentaOriginal}<br>
+                ⚡ Medidor: ${medidorOriginal}
+            </div>
+            <p>Se encontró información adicional. Haz clic para ver detalles:</p>
+            <div class="action-buttons">`;
+    
+    for (const [tabla, datos] of Object.entries(relacionadasPorTabla)) {
+        const config = tableConfigs[tabla];
+        const icono = config ? config.icon : '📋';
+        html += `<button class="btn btn-secondary" onclick="mostrarDetalleRelacionados('${tabla}')">
+                    ${icono} Ver ${config.title} (${datos.length})
+                 </button>`;
+    }
+    
+    html += `</div></div>`;
+    container.innerHTML += html;
 }
 
-      function mostrarResultadosAdicionalesOS(tabla) {
-    if (!window.resultadosAdicionalesOS || !window.resultadosAdicionalesOS[tabla]) {
+// ===================================================================
+// 📄 MOSTRAR DETALLE DE RESULTADOS RELACIONADOS
+// ===================================================================
+
+function mostrarDetalleRelacionados(tabla) {
+    if (!window.resultadosRelacionados || !window.resultadosRelacionados[tabla]) {
         alert('No hay datos disponibles');
         return;
     }
     
-    const datos = window.resultadosAdicionalesOS[tabla];
+    const datos = window.resultadosRelacionados[tabla];
     const config = tableConfigs[tabla];
-    
     const container = document.getElementById('searchResults');
-    const contenidoOriginal = container.innerHTML;
+    
+    // Guardar estado original
+    window.contenidoOriginalBusqueda = container.innerHTML;
     
     let html = `
         <div class="result-card" style="background: #e3f2fd; border: 2px solid #2196f3;">
-            <div class="result-header">📋 ${config.title} - OS Relacionadas</div>
+            <div class="result-header">📋 ${config.title} - Información Relacionada</div>
             <div style="margin-bottom: 15px; text-align: center;">
                 <button class="btn btn-back" onclick="restaurarResultadosOriginales()">
                     ← Volver a Resultados Principales
                 </button>
             </div>
-        </div>
-    `;
-    
-    // Cambio temporal de selectedTable solo para las acciones/botones
-    const selectedTableOriginal = selectedTable;
-    selectedTable = tabla; 
-    
-    datos.forEach((item, index) => {
-        html += `<div class="result-card"><div class="result-header">Relacionada ${index + 1}</div>`;
-        config.resultFields.forEach(field => {
-            
-            // 💡 CORRECCIÓN CLAVE: Aseguramos que 'valor' es un String, incluso si era null/undefined
-            let valor = String(item[field] || 'N/A'); 
-            
-            // =====================================================================
-            // === LÓGICA DE FORMATO DE COMENTARIOS APLICADA AQUÍ ===
-            // =====================================================================
-            if ((field === 'Comentario' || field === 'ComentarioGeneral') && valor !== 'N/A') {
-                // Se copia toda la lógica de 'replace' de mostrarResultados
-                valor = valor
-                    .replace(/\*([^*]+)\*/g, '<br><strong>$1</strong>')
-                    .replace(/OS SAP/g, '<br><strong>OS SAP</strong>')
-                    .replace(/Fecha Generacion/g, '<br><strong>Fecha Generación:</strong>')
-                    .replace(/Medidor según SAP/g, '<br><strong>Medidor según SAP:</strong>')
-                    .replace(/Cantidad OS/g, '<br><strong>Cantidad OS:</strong>')
-                    .replace(/Comentario Generacion/g, '<br><strong>Comentario Generación:</strong>')
-                    .replace(/Comentario Incumplida o Adicional/g, '<br><strong>Comentario Incumplida o Adicional:</strong>')
-                    .replace(/Comentario de Visita Fallida/g, '<br><strong>Comentario de Visita Fallida:</strong>')
-                    .replace(/Comentario de visita Anterior/g, '<br><strong>Comentario de visita Anterior:</strong>')
-                    .replace(/Foto Medidor o Suministr/g, '<br><strong>Foto Medidor o Suministro:</strong>')
-                    .replace(/Coordenas Contiguo Previa/g, '<br><strong>Coordenadas Contiguo Previa:</strong>')
-                    .replace(/Coordenadas Visita Anterior/g, '<br><strong>Coordenadas Visita Anterior:</strong>')
-                    .replace(/Coordeadas lector/g, '<br><strong>Coordenadas lector:</strong>')
-                    .replace(/Coordenadas de OS según ATOMO/g, '<br><strong>Coordenadas de OS según ATOMO:</strong>')
-                    .replace(/Fecha Eje\. OS anterior/g, '<br><strong>Fecha Eje. OS anterior:</strong>')
-                    .replace(/Unidad que Eje\. OS Anterior/g, '<br><strong>Unidad que Eje. OS Anterior:</strong>')
-                    .replace(/Dias (\d+)/g, '<br><strong>Días:</strong> $1')
-                    .replace(/lectura[:\s]*(\d+)/gi, '<br><strong>Lectura:</strong> $1')
-                    .replace(/Sin Datos/g, '<br><em>Sin Datos</em>')
-                    .replace(/Sin Comentario/g, '<br><em>Sin Comentario</em>')
-                    .replace(/Sin Coordenadas/g, '<br><em>Sin Coordenadas</em>')
-                    .replace(/Sin Foto/g, '<br><em>Sin Foto</em>')
-                    .replace(/Nombre del Cliente/g, '<br><strong>Nombre del Cliente:</strong>')
-                    .replace(/Cuenta contrato/g, '<br><strong>Cuenta contrato:</strong>')
-                    .replace(/Dirección del cliente/g, '<br><strong>Dirección del cliente:</strong>')
-                    .replace(/Medidor (\d+)/g, '<br><strong>Medidor:</strong> $1')
-                    .replace(/Numero de OS/g, '<br><strong>Número de OS:</strong>')
-                    .replace(/Tipologia/g, '<br><strong>Tipología:</strong>')
-                    .replace(/Comentario de Cierre/g, '<br><strong>Comentario de Cierre:</strong>')
-                    .replace(/coordenadas del suministro/g, '<br><strong>Coordenadas del suministro:</strong>')
-                    .replace(/Comentario de Generacion/g, '<br><strong>Comentario de Generación:</strong>')
-                    .replace(/Coordenadas De cierre/g, '<br><strong>Coordenadas De cierre:</strong>')
-                    .replace(/Fecha Ejec/g, '<br><strong>Fecha Ejec:</strong>')
-                    .replace(/Ejecutada por/g, '<br><strong>Ejecutada por:</strong>')
-                    .replace(/Nombre Cliente/g, '<br><em>Nombre Cliente</em>')
-                    .replace(/Cuenta Contrato/g, '<br><em>Cuenta Contrato</em>')
-                    .replace(/Direccion/g, '<br><em>Direccion</em>')
-                    .replace(/Tarifa/g, '<br><em>Tarifa</em>')
-                    .replace(/Medidor/g, '<br><em>Medidor</em>')
-                    .replace(/Fecha Lect/g, '<br><em>Fecha Lect</em>')
-                    .replace(/Proteccion que lo Alimenta/g, '<br><em>Proteccion que lo Alimenta</em>')
-                    .replace(/Propiedad/g, '<br><em>Propiedad</em>')
-                    .replace(/Voltaje Primario Nominal/g, '<br><em>Voltaje Primario Nominal</em>')
-                    .replace(/Capacidad Sum/g, '<br><em>Capacidad Sum</em>')
-                    .replace(/Circuito/g, '<br><em>Circuito</em>')
-                    .replace(/Uicacion/g, '<br><em>Uicacion</em>')
-                    .replace(/Cantidad de clientes/g, '<br><em>Cantidad de clientes</em>')
-                    .replace(/Estructura Tx/g, '<br><em>Estructura Tx</em>')
-                    .replace(/Primary Phase ConcatSet/g, '<br><em>Primary Phase ConcatSet</em>')
-                    .replace(/Usos/g, '<br><em>Usos</em>')
-                    .replace(/Voltaje/g, '<br><em>Voltaje</em>')
-                    .replace(/Voltaje Primario Nominal/g, '<br><em>Voltaje Primario Nominal</em>')
-                    .replace(/Estructura/g, '<br><em>Estructura</em>')
-                    .replace(/Aes Circuito/g, '<br><em>Aes Circuito</em>')
-                    .replace(/Municipio/g, '<br><em>Municipio</em>')
-                    .replace(/Fecha Ejec/g, '<br><em>Fecha Ejeco</em>')
-                    .replace(/Fecha Gene/g, '<br><em>Fecha Gene</em>')
-                    .replace(/OS ATOMO/g, '<br><em>OS ATOMO</em>')
-                    .replace(/NIC(Contract Account)/g, '<br><em>NIC(Contract Account)</em>')
-                    .replace(/Comentario de Previa/g, '<br><em>Comentario de Previa</em>')
-                    .replace(/Comentario Generacion/g, '<br><em>Comentario Generacion</em>')
-                    .replace(/Coordenadas/g, '<br><em>Coordenadas</em>')
-                    .replace(/Coordenadas según ATOMO/g, '<br><em>Coordenadas según ATOMO</em>')
-                    .replace(/(https?:\/\/[^\s]+)/g, '<br><a href="$1" target="_blank" style="color: #3b54d3; text-decoration: underline; font-weight: 600;">🔗 Ver enlace</a>');
-                
-                // Mostrar el campo con el div especial para formato
-                html += `<div class="result-item"><strong>${field}:</strong><div style="margin-left: 10px; line-height: 1.6;">${valor}</div></div>`;
-            } else {
-                // Mostrar campos normales
-                html += `<div class="result-item"><strong>${field}:</strong> ${valor}</div>`;
-            }
-            // =====================================================================
-            
-        });
-        
-        // Botones de acción
-        html += '<div class="action-buttons">';
-        config.actions.forEach(action => {
-            const val = item[action];
-            if (!val) return;
-            
-            if (action.toLowerCase().includes('coordenadas')) {
-                // Usando la función abrirCoordenadas con el formato mejorado
-                html += `<button class="btn btn-secondary" onclick="abrirCoordenadas('${val}')">📍 Coordenadas</button>`;
-            } else if (action === 'FotoLink' || action === 'fotolink') {
-                html += `<button class="btn btn-secondary" onclick="verFoto('${val}')">📸 Ver Foto</button>`;
-            }
-        });
-        html += '</div></div>';
-    });
-    
-    // Restaurar selectedTable original
-    selectedTable = selectedTableOriginal;
-    
-    // Guardar el contenido original para poder restaurarlo
-    window.contenidoOriginalBusqueda = contenidoOriginal;
-    
-    container.innerHTML = html;
-}
-
-
-async function capturarCoordenadasGPS() {
-  if (!navigator.geolocation || !currentUser) return;
-  try {
-    const posicion = await new Promise((resolve, reject) => {
-      const timeoutId = setTimeout(() => reject(new Error("Timeout")), 2000);
-      navigator.geolocation.getCurrentPosition(
-        pos => {
-          clearTimeout(timeoutId);
-          resolve(pos);
-        },
-        error => {
-          clearTimeout(timeoutId);
-          reject(error);
-        },
-        { enableHighAccuracy: false, timeout: 1500, maximumAge: 600000 }
-      );
-    });
-    const lat = posicion.coords.latitude;
-    const lng = posicion.coords.longitude;
-    const coordenadas = lat + "," + lng;
-    const timestamp = new Date().toISOString();
-    await supabaseClient.from("usuarios").update({ coordenadas, ultimaconexion: timestamp }).eq("id", currentUser.id);
-  } catch (error) {
-    if (currentUser) {
-      await supabaseClient.from("usuarios").update({ ultimaconexion: new Date().toISOString() }).eq("id", currentUser.id);
-    }
-  }
-}
-
-      function restaurarResultadosOriginales() {
-  const container = document.getElementById('searchResults');
-  if (window.contenidoOriginalBusqueda) {
-    container.innerHTML = window.contenidoOriginalBusqueda;
-    delete window.contenidoOriginalBusqueda;
-  } else {
-    container.innerHTML = '<div class="result-card">Realice una nueva búsqueda</div>';
-  }
-}
-
-function mostrarIndicadorBusquedaAdicional() {
-  const container = document.getElementById('searchResults');
-  const indicador = `
-    <div id="indicadorBusquedaAdicional" class="result-card" style="background: #f0f9ff; border: 2px solid #3b54d3; text-align: center;">
-      <div style="display: flex; align-items: center; justify-content: center; gap: 10px;">
-        <div class="loading" style="display: block;"></div>
-        <span>Buscando OS relacionadas...</span>
-      </div>
-    </div>
-  `;
-  container.innerHTML += indicador;
-}
-
-function ocultarIndicadorBusquedaAdicional() {
-  const indicador = document.getElementById('indicadorBusquedaAdicional');
-  if (indicador) indicador.remove();
-}
-
-function encontrarCampoEquivalente(campoOriginal, configTabla) {
-  const mapaCampos = {
-    'CuentaContrato': ['CuentaContrato'],
-    'Medidor': ['Medidor'], 
-    'NombreCliente': ['NombreCliente'],
-    'OSATMO': ['OSATMO', 'OSATOMO'],
-    'OSSAP': ['OSSAP']
-  };
-  
-  const posiblesCampos = mapaCampos[campoOriginal] || [campoOriginal];
-  
-  for (const field of configTabla.fields) {
-    if (posiblesCampos.includes(field.key)) {
-      return field.key;
-    }
-  }
-  return null;
-}
-
-
-
-function abrirCoordenadas(coordenadas) {
-  if (coordenadas) window.open(`https://www.google.com/maps?q=${coordenadas}`, '_blank');
-}
-
-function verFoto(link) {
-  if (link) window.open(link, '_blank');
-}
-
-function seleccionarTabla(tableName) {
-  if (currentUser.rol === 'Lectura' && tableName !== 'consultas_servicios') {
-    alert('Su rol solo permite acceso a Consultas de Servicios');
-    return;
-  }
-
-  selectedTable = tableName;
-  const config = tableConfigs[tableName];
-  document.getElementById('searchTitle').innerHTML = `${config.icon} ${config.title}`;
-  generarCamposBusqueda(config);
-  document.getElementById('tableSelectionSection').style.display = 'none';
-  document.getElementById('searchSection').style.display = 'block';
-}
-
-
-async function generarKMLMultiple() {
-  const btnGenerar = document.getElementById('btnGenerarKML');
-  const btnDescargar = document.getElementById('btnDescargarKML');
-  
-  btnGenerar.innerHTML = '⏳ Generando KML...';
-  btnGenerar.disabled = true;
-  
-  try {
-    const ubicaciones = [];
-    
-    window.resultadosKML.forEach((item, index) => {
-      const coordenadas = item.Coordenadas || item.coordenadas || item.Coordenadasgis || item.coordenadasgis;
-      if (coordenadas && coordenadas.includes(',')) {
-        const etiqueta = item.NombreCliente || item.CuentaContrato || item.Medidor || `Punto ${index + 1}`;
-        ubicaciones.push({ etiqueta, coordenadas });
-      }
-    });
-    
-    if (ubicaciones.length === 0) {
-      alert('No se encontraron coordenadas válidas en los resultados');
-      btnGenerar.innerHTML = '🗺️ Generar KML';
-      btnGenerar.disabled = false;
-      return;
-    }
-    
-    // Simular procesamiento
-    await new Promise(resolve => setTimeout(resolve, 1500));
-    
-    window.kmlGenerado = generarKMLString(ubicaciones);
-    
-    btnGenerar.innerHTML = '✅ KML Generado';
-    btnDescargar.classList.remove('hidden');
-    
-    // Guardar coordenadas en BD del usuario
-    if (currentUser) {
-      const coordenadasTexto = ubicaciones.map(u => `${u.etiqueta}: ${u.coordenadas}`).join('\n');
-      await supabaseClient
-        .from('usuarios')
-        .update({ 
-          coordenadas: coordenadasTexto,
-          ultimaconexion: new Date().toISOString()
-        })
-        .eq('id', currentUser.id);
-    }
-    
-  } catch (error) {
-    alert('Error generando KML: ' + error.message);
-    btnGenerar.innerHTML = '🗺️ Generar KML';
-    btnGenerar.disabled = false;
-  }
-}
-
-// === FUNCIÓN PARA CONSTRUIR EL CONTENIDO XML DEL KML ===
-function generarKMLString(ubicaciones) {
-    if (!Array.isArray(ubicaciones) || ubicaciones.length === 0) {
-        throw new Error("No se enviaron ubicaciones válidas para el KML.");
-    }
-    
-    let kml = '<?xml version="1.0" encoding="UTF-8"?>\n';
-    kml += '<kml xmlns="http://www.opengis.net/kml/2.2">\n<Document>\n';
-    kml += '<name>Coordenadas de búsqueda</name>\n';
-
-    ubicaciones.forEach(({ etiqueta, coordenadas }) => {
-        const parts = coordenadas.split(',').map(s => s.trim());
-        let coordsForKML;
-        
-        // Aseguramos el formato: Longitud,Latitud,Altitud (o solo Longitud,Latitud)
-        if (parts.length >= 2) {
-            // Asumiendo que tus datos son Latitud, Longitud (que es el formato común)
-            coordsForKML = `${parts[1]},${parts[0]},0`; 
-        } else {
-            // Fallback (debería ser corregido si ocurre)
-            coordsForKML = `0,0`; 
-        }
-
-        kml += '<Placemark>\n';
-        kml += `<name>${etiqueta}</name>\n`;
-        kml += `<description>ID/Referencia: ${etiqueta}</description>\n`;
-        kml += '<Style>\n<IconStyle>\n<Icon>\n';
-        kml += '<href>http://maps.google.com/mapfiles/kml/pushpin/red-pushpin.png</href>\n';
-        kml += '</Icon>\n</IconStyle>\n</Style>\n';
-        kml += `<Point><coordinates>${coordsForKML}</coordinates></Point>\n`;
-        kml += '</Placemark>\n';
-    });
-
-    kml += '</Document>\n</kml>';
-    return kml;
-}
-
-
-// === FUNCIÓN PARA MANEJAR LA BÚSQUEDA MÚLTIPLE (KML) ===
-async function busquedaMultipleKML(campo, valores) {
-    // 1. Mostrar un indicador
-    document.getElementById('searchResults').innerHTML = '<div class="result-card">⏳ Buscando múltiples resultados para KML...</div>';
-
-    try {
-        const resultadosTotales = [];
-        
-        // 2. Iterar sobre cada valor de búsqueda
-        for (const valor of valores) {
-            let query = supabaseClient.from(selectedTable).select('*');
-            query = query.eq(campo, valor); 
-            
-            const { data, error } = await query;
-
-            if (error) {
-                console.error(`Error buscando ${valor}:`, error.message);
-                continue;
-            }
-
-            if (data && data.length > 0) {
-                // Solo guardamos los resultados exitosos
-                resultadosTotales.push(...data);
-            }
-        }
-        
-        // 3. Almacenar los resultados globales para la generación de KML
-        window.resultadosKML = resultadosTotales; 
-
-        // 4. Actualizar la interfaz con el botón de generar KML
-        if (resultadosTotales.length > 0) {
-             let html = `<div class="result-card" style="background: #f0f8ff; border: 2px solid #5a5f78;">
-                         <div class="result-header">✅ ${resultadosTotales.length} Resultados Encontrados</div>
-                         <p>Resultados listos para generar el archivo KML de coordenadas.</p>
-                         <div class="action-buttons">
-                             <button id="btnGenerarKML" class="btn btn-primary" onclick="generarKMLMultiple()">
-                                 🗺️ Generar KML
-                             </button>
-                             <button id="btnDescargarKML" class="btn btn-success hidden" onclick="descargarKMLGenerado()">
-                                 ⬇️ Descargar KML
-                             </button>
-                         </div>
-                         </div>`;
-            document.getElementById('searchResults').innerHTML = html;
-        } else {
-            document.getElementById('searchResults').innerHTML = '<div class="result-card">❌ No se encontraron resultados para los valores ingresados.</div>';
-        }
-
-    } catch (error) {
-        console.error('Error en busquedaMultipleKML:', error);
-        document.getElementById('searchResults').innerHTML = '<div class="result-card">❌ Error procesando la búsqueda múltiple.</div>';
-    }
-}
-
-function descargarKMLGenerado() {
-  if (!window.kmlGenerado) {
-    alert('No hay KML generado para descargar');
-    return;
-  }
-  
-  const blob = new Blob([window.kmlGenerado], { type: 'application/vnd.google-earth.kml+xml' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `busqueda_multiple_${selectedTable}_${new Date().getTime()}.kml`;
-  a.click();
-  URL.revokeObjectURL(url);
-}
-
-
-
-async function busquedaAdicionalProgresiva(campo, valor) {
-  // Mostrar indicador de búsqueda adicional
-  mostrarIndicadorBusquedaAdicional();
-  
-  const tablasAdicionales = ['OS Pendientes', 'OSCerradas'];
-  const resultadosAdicionales = {};
-  
-  try {
-    // Buscar en cada tabla
-    for (const tabla of tablasAdicionales) {
-      const config = tableConfigs[tabla];
-      if (!config) continue;
-      
-      const campoEquivalente = encontrarCampoEquivalente(campo, config);
-      if (!campoEquivalente) continue;
-      
-      let query = supabaseClient.from(tabla).select('*');
-      query = query.eq(campoEquivalente, valor);
-      
-      const { data, error } = await query;
-      if (!error && data && data.length > 0) {
-        resultadosAdicionales[tabla] = data;
-      }
-    }
-    
-    // Actualizar interfaz con resultados
-    actualizarConResultadosAdicionales(resultadosAdicionales);
-    
-  } catch (error) {
-    console.error('Error en búsqueda adicional:', error);
-    ocultarIndicadorBusquedaAdicional();
-  }
-}
-
-
-function mostrarIndicadorBusquedaAdicional() {
-  const container = document.getElementById('searchResults');
-  const indicador = `
-    <div id="indicadorBusquedaAdicional" class="result-card" style="background: #f0f9ff; border: 2px solid #3b54d3; text-align: center;">
-      <div style="display: flex; align-items: center; justify-content: center; gap: 10px;">
-        <div class="loading" style="display: block;"></div>
-        <span>Buscando en otras tablas...</span>
-      </div>
-      <div style="margin-top: 10px; font-size: 14px; color: #666;">
-        <div>⏳ OS Pendientes...</div>
-        <div>⏳ OS Cerradas...</div>
-      </div>
-    </div>
-  `;
-  container.innerHTML += indicador;
-}
-
-function ocultarIndicadorBusquedaAdicional() {
-  const indicador = document.getElementById('indicadorBusquedaAdicional');
-  if (indicador) indicador.remove();
-}
-
-function actualizarConResultadosAdicionales(resultadosAdicionales) {
-  ocultarIndicadorBusquedaAdicional();
-  
-  if (Object.keys(resultadosAdicionales).length > 0) {
-    const container = document.getElementById('searchResults');
-    let botonesHtml = `
-      <div class="result-card" style="background: #f0fff4; border: 2px solid #22c55e;">
-        <div class="result-header">✅ Información adicional encontrada</div>
-        <p>Se encontró información relacionada:</p>
-        <div class="action-buttons">
-    `;
-    
-    for (const [tabla, datos] of Object.entries(resultadosAdicionales)) {
-      const config = tableConfigs[tabla];
-      const icono = config ? config.icon : '📋';
-      botonesHtml += `
-        <button class="btn btn-secondary" onclick="mostrarResultadosAdicionales('${tabla}')">
-          ${icono} Ver ${config.title} (${datos.length})
-        </button>
-      `;
-    }
-    
-    botonesHtml += `</div></div>`;
-    container.innerHTML += botonesHtml;
-    
-    window.resultadosAdicionales = resultadosAdicionales;
-  }
-}
-
-function encontrarCampoEquivalente(campoOriginal, configTabla) {
-  const mapaCampos = {
-    'CuentaContrato': ['CuentaContrato'],
-    'Medidor': ['Medidor'],
-    'NombreCliente': ['NombreCliente']
-  };
-  
-  const posiblesCampos = mapaCampos[campoOriginal] || [campoOriginal];
-  
-  for (const field of configTabla.fields) {
-    if (posiblesCampos.includes(field.key)) {
-      return field.key;
-    }
-  }
-  return null;
-}
-
-function mostrarResultadosAdicionales(tabla) {
-    if (!window.resultadosAdicionales || !window.resultadosAdicionales[tabla]) {
-        alert('No hay datos disponibles');
-        return;
-    }
-    
-    const datos = window.resultadosAdicionales[tabla];
-    const config = tableConfigs[tabla];
-    
-    // Guardar el contenido actual antes de reemplazarlo
-    const container = document.getElementById('searchResults');
-    const contenidoOriginal = container.innerHTML;
-    
-    let html = `
-        <div class="result-card" style="background: #e3f2fd; border: 2px solid #2196f3;">
-            <div class="result-header">📋 ${config.title} - Información Adicional</div>
-            <div style="margin-bottom: 15px; text-align: center;">
-                <button class="btn btn-back" onclick="restaurarResultadosOriginales()">
-                    ← Volver a Consulta de Suministros
-                </button>
-            </div>
-        </div>
-    `;
+        </div>`;
     
     const selectedTableOriginal = selectedTable;
-    selectedTable = tabla; // Cambio temporal solo para acciones/botones
+    selectedTable = tabla;
     
     datos.forEach((item, index) => {
         html += `<div class="result-card"><div class="result-header">Resultado ${index + 1}</div>`;
         config.resultFields.forEach(field => {
+            let valor = String(item[field] || 'N/A');
             
-            // 💡 CORRECCIÓN 1: Aseguramos que 'valor' es un String
-            let valor = String(item[field] || 'N/A'); 
-            
-            // === LÓGICA CLAVE DE FORMATO DE COMENTARIOS ===
-            // Comprobamos si es un campo de comentario y si tiene contenido
             if ((field === 'Comentario' || field === 'ComentarioGeneral') && valor !== 'N/A') {
-                
-                // 💡 CORRECCIÓN 2: Aplicamos la cadena COMPLETA de reemplazos
-                valor = valor
-                    .replace(/\*([^*]+)\*/g, '<br><strong>$1</strong>') // *texto* -> negrita con salto
-                    .replace(/OS SAP/g, '<br><strong>OS SAP</strong>')
-                    .replace(/Fecha Generacion/g, '<br><strong>Fecha Generación:</strong>')
-                    .replace(/Medidor según SAP/g, '<br><strong>Medidor según SAP:</strong>')
-                    .replace(/Cantidad OS/g, '<br><strong>Cantidad OS:</strong>')
-                    .replace(/Comentario Generacion/g, '<br><strong>Comentario Generación:</strong>')
-                    .replace(/Comentario Incumplida o Adicional/g, '<br><strong>Comentario Incumplida o Adicional:</strong>')
-                    .replace(/Comentario de Visita Fallida/g, '<br><strong>Comentario de Visita Fallida:</strong>')
-                    .replace(/Comentario de visita Anterior/g, '<br><strong>Comentario de visita Anterior:</strong>')
-                    .replace(/Foto Medidor o Suministr/g, '<br><strong>Foto Medidor o Suministro:</strong>')
-                    .replace(/Coordenas Contiguo Previa/g, '<br><strong>Coordenadas Contiguo Previa:</strong>')
-                    .replace(/Coordenadas Visita Anterior/g, '<br><strong>Coordenadas Visita Anterior:</strong>')
-                    .replace(/Coordeadas lector/g, '<br><strong>Coordenadas lector:</strong>')
-                    .replace(/Coordenadas de OS según ATOMO/g, '<br><strong>Coordenadas de OS según ATOMO:</strong>')
-                    .replace(/Fecha Eje\. OS anterior/g, '<br><strong>Fecha Eje. OS anterior:</strong>')
-                    .replace(/Unidad que Eje\. OS Anterior/g, '<br><strong>Unidad que Eje. OS Anterior:</strong>')
-                    .replace(/Dias (\d+)/g, '<br><strong>Días:</strong> $1')
-                    .replace(/lectura[:\s]*(\d+)/gi, '<br><strong>Lectura:</strong> $1')
-                    .replace(/Sin Datos/g, '<br><em>Sin Datos</em>')
-                    .replace(/Sin Comentario/g, '<br><em>Sin Comentario</em>')
-                    .replace(/Sin Coordenadas/g, '<br><em>Sin Coordenadas</em>')
-                    .replace(/Sin Foto/g, '<br><em>Sin Foto</em>')
-                    .replace(/Nombre del Cliente/g, '<br><strong>Nombre del Cliente:</strong>')
-                    .replace(/Cuenta contrato/g, '<br><strong>Cuenta contrato:</strong>')
-                    .replace(/Dirección del cliente/g, '<br><strong>Dirección del cliente:</strong>')
-                    .replace(/Medidor (\d+)/g, '<br><strong>Medidor:</strong> $1')
-                    .replace(/Numero de OS/g, '<br><strong>Número de OS:</strong>')
-                    .replace(/Tipologia/g, '<br><strong>Tipología:</strong>')
-                    .replace(/Comentario de Cierre/g, '<br><strong>Comentario de Cierre:</strong>')
-                    .replace(/coordenadas del suministro/g, '<br><strong>Coordenadas del suministro:</strong>')
-                    .replace(/Comentario de Generacion/g, '<br><strong>Comentario de Generación:</strong>')
-                    .replace(/Coordenadas De cierre/g, '<br><strong>Coordenadas De cierre:</strong>')
-                    .replace(/Fecha Ejec/g, '<br><strong>Fecha Ejec:</strong>')
-                    .replace(/Ejecutada por/g, '<br><strong>Ejecutada por:</strong>')
-                    .replace(/Nombre Cliente/g, '<br><em>Nombre Cliente</em>')
-                    .replace(/Cuenta Contrato/g, '<br><em>Cuenta Contrato</em>')
-                    .replace(/Direccion/g, '<br><em>Direccion</em>')
-                    .replace(/Tarifa/g, '<br><em>Tarifa</em>')
-                    .replace(/Medidor/g, '<br><em>Medidor</em>')
-                    .replace(/Fecha Lect/g, '<br><em>Fecha Lect</em>')
-                    .replace(/Proteccion que lo Alimenta/g, '<br><em>Proteccion que lo Alimenta</em>')
-                    .replace(/Propiedad/g, '<br><em>Propiedad</em>')
-                    .replace(/Voltaje Primario Nominal/g, '<br><em>Voltaje Primario Nominal</em>')
-                    .replace(/Capacidad Sum/g, '<br><em>Capacidad Sum</em>')
-                    .replace(/Circuito/g, '<br><em>Circuito</em>')
-                    .replace(/Uicacion/g, '<br><em>Uicacion</em>')
-                    .replace(/Cantidad de clientes/g, '<br><em>Cantidad de clientes</em>')
-                    .replace(/Estructura Tx/g, '<br><em>Estructura Tx</em>')
-                    .replace(/Primary Phase ConcatSet/g, '<br><em>Primary Phase ConcatSet</em>')
-                    .replace(/Usos/g, '<br><em>Usos</em>')
-                    .replace(/Voltaje/g, '<br><em>Voltaje</em>')
-                    .replace(/Voltaje Primario Nominal/g, '<br><em>Voltaje Primario Nominal</em>')
-                    .replace(/Estructura/g, '<br><em>Estructura</em>')
-                    .replace(/Aes Circuito/g, '<br><em>Aes Circuito</em>')
-                    .replace(/Municipio/g, '<br><em>Municipio</em>')
-                    .replace(/Fecha Ejec/g, '<br><em>Fecha Ejeco</em>')
-                    .replace(/Fecha Gene/g, '<br><em>Fecha Gene</em>')
-                    .replace(/OS ATOMO/g, '<br><em>OS ATOMO</em>')
-                    .replace(/NIC(Contract Account)/g, '<br><em>NIC(Contract Account)</em>')
-                    .replace(/Comentario de Previa/g, '<br><em>Comentario de Previa</em>')
-                    .replace(/Comentario Generacion/g, '<br><em>Comentario Generacion</em>')
-                    .replace(/Coordenadas/g, '<br><em>Coordenadas</em>')
-                    .replace(/Coordenadas según ATOMO/g, '<br><em>Coordenadas según ATOMO</em>')
-                    .replace(/(https?:\/\/[^\s]+)/g, '<br><a href="$1" target="_blank" style="color: #3b54d3; text-decoration: underline; font-weight: 600;">🔗 Ver enlace</a>');
-                
-                // Agregamos el div con estilo para aplicar el salto de línea y el formato
+                valor = formatearComentario(valor);
                 html += `<div class="result-item"><strong>${field}:</strong><div style="margin-left: 10px; line-height: 1.6;">${valor}</div></div>`;
             } else {
                 html += `<div class="result-item"><strong>${field}:</strong> ${valor}</div>`;
             }
-            // ===============================================
         });
         
-        // ... (el resto de la función, que está bien) ...
         html += '<div class="action-buttons">';
         config.actions.forEach(action => {
             const val = item[action];
             if (!val) return;
             
             if (action.toLowerCase().includes('coordenadas')) {
-                // Usamos la función corregida de coordenadas
                 html += `<button class="btn btn-secondary" onclick="abrirCoordenadas('${val}')">📍 Coordenadas</button>`;
             } else if (action === 'FotoLink' || action === 'fotolink') {
                 html += `<button class="btn btn-secondary" onclick="verFoto('${val}')">📸 Ver Foto</button>`;
@@ -2963,25 +2879,117 @@ function mostrarResultadosAdicionales(tabla) {
         html += '</div></div>';
     });
     
-    // Restaurar selectedTable original
     selectedTable = selectedTableOriginal;
-    
-    // Guardar el contenido original para poder restaurarlo
-    window.contenidoOriginalBusqueda = contenidoOriginal;
-    
     container.innerHTML = html;
 }
 
- 
+// ===================================================================
+// 📌 MOSTRAR BOTONES DE RESULTADOS ADICIONALES
+// ===================================================================
+
+function mostrarBotonesResultadosAdicionales(resultadosAdicionales) {
+    const container = document.getElementById('searchResults');
+    let html = `
+        <div class="result-card" style="background: #f0fff4; border: 2px solid #22c55e;">
+            <div class="result-header">✅ Información adicional encontrada</div>
+            <p>Se encontró información relacionada:</p>
+            <div class="action-buttons">`;
+    
+    for (const [tabla, datos] of Object.entries(resultadosAdicionales)) {
+        const config = tableConfigs[tabla];
+        const icono = config ? config.icon : '📋';
+        html += `<button class="btn btn-secondary" onclick="mostrarDetalleRelacionados('${tabla}')">
+                    ${icono} Ver ${config.title} (${datos.length})
+                 </button>`;
+    }
+    
+    html += `</div></div>`;
+    container.innerHTML += html;
+    window.resultadosRelacionados = resultadosAdicionales;
+}
+
+// ===================================================================
+// 🔧 FUNCIONES AUXILIARES
+// ===================================================================
 
 function restaurarResultadosOriginales() {
     const container = document.getElementById('searchResults');
-    if (window.contenidoOriginalBusqueda) {
-        container.innerHTML = window.contenidoOriginalBusqueda;
-        // Limpiar la variable temporal
-        delete window.contenidoOriginalBusqueda;
-    } else {
-        container.innerHTML = '<div class="result-card">Realice una nueva búsqueda</div>';
+    container.innerHTML = window.contenidoOriginalBusqueda || '<div class="result-card">Realice una nueva búsqueda</div>';
+    delete window.contenidoOriginalBusqueda;
+}
+
+function mostrarIndicadorBusqueda() {
+    const container = document.getElementById('searchResults');
+    container.innerHTML += `
+        <div id="indicadorBusqueda" class="result-card" style="background: #f0f9ff; border: 2px solid #3b54d3; text-align: center;">
+            <div style="display: flex; align-items: center; justify-content: center; gap: 10px;">
+                <div class="loading" style="display: block;"></div>
+                <span>Buscando información relacionada...</span>
+            </div>
+        </div>`;
+}
+
+function ocultarIndicadorBusqueda() {
+    const indicador = document.getElementById('indicadorBusqueda');
+    if (indicador) indicador.remove();
+}
+
+function encontrarCampoEquivalente(campoOriginal, configTabla) {
+    const mapaCampos = {
+        'CuentaContrato': ['CuentaContrato'],
+        'Medidor': ['Medidor'], 
+        'NombreCliente': ['NombreCliente'],
+        'OSATMO': ['OSATMO', 'OSATOMO'],
+        'OSSAP': ['OSSAP']
+    };
+    
+    const posiblesCampos = mapaCampos[campoOriginal] || [campoOriginal];
+    
+    for (const field of configTabla.fields) {
+        if (posiblesCampos.includes(field.key)) {
+            return field.key;
+        }
+    }
+    return null;
+}
+
+function tieneCoordenadasValidas(resultados) {
+    return resultados.some(item => {
+        const coordenadas = item.Coordenadas || item.coordenadas || item.Coordenadasgis || item.coordenadasgis;
+        return coordenadas && coordenadas.includes(',');
+    });
+}
+
+function abrirCoordenadas(coordenadas) {
+    if (coordenadas) window.open(`https://www.google.com/maps?q=${coordenadas}`, '_blank');
+}
+
+function verFoto(link) {
+    if (link) window.open(link, '_blank');
+}
+
+async function capturarCoordenadasGPS() {
+    if (!navigator.geolocation || !currentUser) return;
+    try {
+        const posicion = await new Promise((resolve, reject) => {
+            const timeoutId = setTimeout(() => reject(new Error("Timeout")), 2000);
+            navigator.geolocation.getCurrentPosition(
+                pos => { clearTimeout(timeoutId); resolve(pos); },
+                error => { clearTimeout(timeoutId); reject(error); },
+                { enableHighAccuracy: false, timeout: 1500, maximumAge: 600000 }
+            );
+        });
+        const coordenadas = `${posicion.coords.latitude},${posicion.coords.longitude}`;
+        await supabaseClient.from("usuarios").update({ 
+            coordenadas, 
+            ultimaconexion: new Date().toISOString() 
+        }).eq("id", currentUser.id);
+    } catch (error) {
+        if (currentUser) {
+            await supabaseClient.from("usuarios").update({ 
+                ultimaconexion: new Date().toISOString() 
+            }).eq("id", currentUser.id);
+        }
     }
 }
 
@@ -3003,32 +3011,6 @@ function verFoto(link) {
 
 
 
-// === FUNCIÓN PARA VERIFICAR CORTE DE TURNO ===
-function verificarCorteTurno() {
-    if (!currentUser || currentUser.rol !== 'ATTF' || !currentUser.turnoAsignado) {
-        return; 
-    }
-
-    const ahora = new Date();
-    const horaActual = ahora.getHours();
-    const turnoActual = TURNOS_ATTF[currentUser.turnoAsignado];
-    let horaCorteReal = turnoActual.horaFin + 3; 
-
-    if (turnoActual.codigo === '10pm-6am') {
-        horaCorteReal = 9;
-        if (horaActual >= 1 && horaActual < 9) {
-            alert('Su turno nocturno ha finalizado. Se cerrará su sesión.');
-            logout();
-            return;
-        }
-    } else {
-        if (horaActual >= horaCorteReal) {
-            alert('Su turno ha finalizado. Se cerrará su sesión.');
-            logout();
-            return;
-        }
-    }
-}
 
 // === FUNCIÓN PARA GUARDAR DATOS OFFLINE ===
 function guardarDatosOffline() {
@@ -3111,5 +3093,3 @@ document.addEventListener('DOMContentLoaded', function() {
 </script>
 </body>
 </html>
-
-
