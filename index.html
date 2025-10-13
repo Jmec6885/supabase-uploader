@@ -571,6 +571,12 @@
                         <div class="table-title">TX y Cortes</div>
                         <div class="table-description">Transformadores y cortes de energía</div>
                     </div>
+
+		    <div class="table-option" onclick="seleccionarTabla('usuarios')">
+                        <span class="table-icon">👥</span>
+    			<div class="table-title">Gestión de Usuarios</div>
+    			<div class="table-description">Administrar usuarios del sistema</div>
+		    </div>
                 </div>
             </div>
         </div>
@@ -641,7 +647,11 @@
     // --- 1. DEFINICIÓN DE VARIABLES GLOBALES (Usar solo 'let', una vez) ---
     let currentUser = null;
     let selectedTable = null;
-    let consultasData = []; 
+    let consultasData = [];
+    // === CONFIGURACIÓN DE VISIBILIDAD ===
+const CONFIG_VISIBILIDAD = {
+    mostrarNombreCliente: false  // Cambiar a true cuando necesites mostrar el nombre
+}; 
 
     // --- 2. CONFIGURACIÓN E INICIALIZACIÓN DE SUPABASE ---
     const SUPABASE_URL = 'https://bsxllefnehbwkuqbelec.supabase.co';
@@ -700,41 +710,78 @@ const TURNOS_ATTF = {
 
 
 
-function verificarHorarioPermitido(rol) {
+function verificarHorarioPermitido(rol, userData = null) {
     const ahora = new Date();
     const horaActual = ahora.getHours();
     const diaActual = ahora.getDay(); // 0=Domingo, 1=Lunes, ..., 6=Sábado
+    const fechaHoy = ahora.toISOString().split('T')[0];
     
-    // Supervisor: acceso 24/7
-    if (rol === 'Supervisor') {
+    // Supervisor/Administrador: acceso 24/7
+    if (rol === 'Supervisor' || rol === 'Administrador') {
         return { permitido: true };
     }
     
-    // Contratista: Lunes-Sábado, 5 AM - 8 PM
+    // 🆕 VALIDAR EXCEPCIONES DE HORARIO (para Lectura/Consulta/Contratista)
+    if (userData && (rol === 'Lectura' || rol === 'Consulta' || rol === 'Contratista')) {
+        // Verificar horario excepcional para día específico
+        if (userData.fecha_excepcional === fechaHoy && 
+            userData.horario_excepcional_inicio && 
+            userData.horario_excepcional_fin) {
+            
+            const horaInicio = parseInt(userData.horario_excepcional_inicio.split(':')[0]);
+            const horaFin = parseInt(userData.horario_excepcional_fin.split(':')[0]);
+            
+            if (horaActual >= horaInicio && horaActual < horaFin) {
+                console.log(`✅ Horario excepcional activo: ${horaInicio}:00 - ${horaFin}:00`);
+                return { permitido: true };
+            }
+        }
+        
+        // Verificar domingo permitido
+        if (diaActual === 0) { // Es domingo
+            if (userData.domingo_permitido && userData.domingo_fecha === fechaHoy) {
+                console.log('✅ Domingo habilitado para este usuario');
+                return { permitido: true };
+            } else {
+                return { 
+                    permitido: false, 
+                    mensaje: 'Los domingos están bloqueados. Si necesitas trabajar hoy, contacta al administrador.' 
+                };
+            }
+        }
+    }
+    
+    // 🎯 CAMBIO: Contratista - Lunes-Sábado, 5 AM - 6 PM
     if (rol === 'Contratista') {
         if (diaActual === 0) { // Domingo bloqueado
             return { permitido: false, mensaje: 'El rol Contratista no tiene acceso los domingos.' };
         }
-        if (horaActual >= 5 && horaActual < 20) {
-            return { permitido: true };
-        }
-        return { permitido: false, mensaje: 'Su acceso está limitado de 5:00 AM a 8:00 PM.' };
-    }
-    
-    // Lectura: 5 AM - 6 PM
-    if (rol === 'Lectura') {
         if (horaActual >= 5 && horaActual < 18) {
             return { permitido: true };
         }
         return { permitido: false, mensaje: 'Su acceso está limitado de 5:00 AM a 6:00 PM.' };
     }
     
-    // Consulta: 5 AM - 8 PM
-    if (rol === 'Consulta') {
-        if (horaActual >= 5 && horaActual < 20) {
+    // 🎯 CAMBIO: Lectura - Lunes-Sábado, 5 AM - 6 PM
+    if (rol === 'Lectura') {
+        if (diaActual === 0) { // Domingo bloqueado
+            return { permitido: false, mensaje: 'El rol Lectura no tiene acceso los domingos.' };
+        }
+        if (horaActual >= 5 && horaActual < 18) {
             return { permitido: true };
         }
-        return { permitido: false, mensaje: 'Su acceso está limitado de 5:00 AM a 8:00 PM.' };
+        return { permitido: false, mensaje: 'Su acceso está limitado de 5:00 AM a 6:00 PM.' };
+    }
+    
+    // 🎯 CAMBIO: Consulta - Lunes-Sábado, 5 AM - 6 PM
+    if (rol === 'Consulta') {
+        if (diaActual === 0) { // Domingo bloqueado
+            return { permitido: false, mensaje: 'El rol Consulta no tiene acceso los domingos.' };
+        }
+        if (horaActual >= 5 && horaActual < 18) {
+            return { permitido: true };
+        }
+        return { permitido: false, mensaje: 'Su acceso está limitado de 5:00 AM a 6:00 PM.' };
     }
     
     // Poda: 5 AM - 6 PM (validación adicional de descanso en otra función)
@@ -753,7 +800,6 @@ function verificarHorarioPermitido(rol) {
     // Rol no reconocido
     return { permitido: true };
 }
-
 
 
 
@@ -927,7 +973,7 @@ async function login() {
         }
 
         // 4. Verificar horario permitido (validación básica por rol)
-        const verificacion = verificarHorarioPermitido(data.rol);
+        const verificacion = verificarHorarioPermitido(data.rol, data);
         if (!verificacion.permitido) {
             alert(verificacion.mensaje);
             return;
@@ -1854,17 +1900,40 @@ async function limpiarTurnosViejos() {
 
 
 
-
 function mostrarTablasSegunRol() {
     if (!currentUser || !currentUser.rol) {
         console.log('❌ currentUser no está disponible');
         return;
     }
     
+    console.log('🔍 Filtrando tablas para rol:', currentUser.rol);
     const tableOptions = document.querySelectorAll('.table-option');
     
+    // 🎯 ADMINISTRADOR: Ve TODO incluyendo usuarios
+    if (currentUser.rol === 'Administrador') {
+        tableOptions.forEach(option => {
+            option.style.display = 'block';
+        });
+        console.log('✅ Administrador: Todas las tablas visibles');
+        return;
+    }
+    
+    // 🎯 SUPERVISOR: Ve TODO EXCEPTO usuarios
+    if (currentUser.rol === 'Supervisor') {
+        tableOptions.forEach(option => {
+            const onclick = option.getAttribute('onclick');
+            if (onclick && !onclick.includes('usuarios')) {
+                option.style.display = 'block';
+            } else {
+                option.style.display = 'none';
+            }
+        });
+        console.log('✅ Supervisor: Todas menos usuarios');
+        return;
+    }
+    
+    // 🎯 LECTURA: Solo consultas_servicios
     if (currentUser.rol === 'Lectura') {
-        // Solo consultas_servicios, sin consumos
         tableOptions.forEach(option => {
             const onclick = option.getAttribute('onclick');
             if (onclick && onclick.includes('consultas_servicios')) {
@@ -1873,8 +1942,12 @@ function mostrarTablasSegunRol() {
                 option.style.display = 'none';
             }
         });
-    } else if (currentUser.rol === 'ATTF' || currentUser.rol === 'Poda') {
-        // Consultas_servicios y TX y Cortes, sin consumos
+        console.log('✅ Lectura: Solo consultas_servicios');
+        return;
+    }
+    
+    // 🎯 ATTF y PODA: consultas_servicios + TX y Cortes
+    if (currentUser.rol === 'ATTF' || currentUser.rol === 'Poda') {
         tableOptions.forEach(option => {
             const onclick = option.getAttribute('onclick');
             if (onclick && (onclick.includes('consultas_servicios') || onclick.includes('TX y Cortes'))) {
@@ -1883,17 +1956,33 @@ function mostrarTablasSegunRol() {
                 option.style.display = 'none';
             }
         });
-    } else if (currentUser.rol === 'Contratista') {
-        // Todas las tablas, sin consumos
-        tableOptions.forEach(option => {
-            option.style.display = 'block';
-        });
-    } else {
-        // Supervisor y Consulta: Todas las tablas con consumos
-        tableOptions.forEach(option => {
-            option.style.display = 'block';
-        });
+        console.log('✅ ATTF/Poda: consultas_servicios + TX y Cortes');
+        return;
     }
+    
+    // 🎯 CONTRATISTA y CONSULTA: Todo excepto usuarios
+    if (currentUser.rol === 'Contratista' || currentUser.rol === 'Consulta') {
+        tableOptions.forEach(option => {
+            const onclick = option.getAttribute('onclick');
+            if (onclick && !onclick.includes('usuarios')) {
+                option.style.display = 'block';
+            } else {
+                option.style.display = 'none';
+            }
+        });
+        console.log('✅ Contratista/Consulta: Todo excepto usuarios');
+        return;
+    }
+    
+    // 🎯 DEFAULT: Todo excepto usuarios
+    tableOptions.forEach(option => {
+        const onclick = option.getAttribute('onclick');
+        if (onclick && !onclick.includes('usuarios')) {
+            option.style.display = 'block';
+        } else {
+            option.style.display = 'none';
+        }
+    });
 }
 
 
@@ -1977,17 +2066,16 @@ async function incrementarContadorBusquedas() {
 
     const tableConfigs = {
      'consultas_servicios': {
-        title: 'Consultas de Servicios',
-        icon: '🏠',
-        fields: [
-          { key: 'CuentaContrato', label: 'Cuenta/Contrato', type: 'exact' },
-          { key: 'Medidor', label: 'Medidor', type: 'exact' },
-          { key: 'NombreCliente', label: 'Nombre Cliente', type: 'like' }
-        ],
-        resultFields: ['CuentaContrato', 'Medidor', 'NombreCliente', 'ComentarioGeneral'],
-        // ✅ Corregidos los nombres de acciones
-        actions: ['Coordenadas', 'Coordenadasgis', 'FotoLink', 'Grafica']
-      },
+    title: 'Consultas de Servicios',
+    icon: '🏠',
+    fields: [
+      { key: 'CuentaContrato', label: 'Cuenta/Contrato', type: 'exact' },
+      { key: 'Medidor', label: 'Medidor', type: 'exact' },
+      { key: 'NombreCliente', label: 'Nombre Cliente', type: 'like', oculto: true }  // ← AGREGADO oculto: true
+    ],
+    resultFields: ['CuentaContrato', 'Medidor', 'NombreCliente', 'ComentarioGeneral'],
+    actions: ['Coordenadas', 'Coordenadasgis', 'FotoLink', 'Grafica']
+},
       'Consumos': {
         title: 'Consumos',
         icon: '📊',
@@ -2043,8 +2131,19 @@ async function incrementarContadorBusquedas() {
         ],
         resultFields: ['TXCortes', 'Circuitos', 'Comentario'],
         actions: ['Coordenadas']
-      }
-    };
+      },
+	// 🆕 AGREGAR ESTO:
+    'usuarios': {
+    title: 'Gestión de Usuarios',
+    icon: '👥',
+    fields: [
+        { key: 'usuario', label: 'Usuario', type: 'like' }
+    ],
+    resultFields: ['usuario', 'rol', 'activo', 'bloqueado'],
+    actions: [],
+    esAdmin: true
+  }
+};
 
     // ✅ Variables para las gráficas
     let consumosChart = null;
@@ -2362,50 +2461,6 @@ function generarKMLString(ubicaciones) {
 
 
 
-
-function mostrarTablasSegunRol() {
-    if (!currentUser || !currentUser.rol) {
-        console.log('❌ currentUser no está disponible');
-        return;
-    }
-    
-    const tableOptions = document.querySelectorAll('.table-option');
-    
-    if (currentUser.rol === 'Lectura') {
-        // Solo consultas_servicios
-        tableOptions.forEach(option => {
-            const onclick = option.getAttribute('onclick');
-            if (onclick && onclick.includes('consultas_servicios')) {
-                option.style.display = 'block';
-            } else {
-                option.style.display = 'none';
-            }
-        });
-    } else if (currentUser.rol === 'ATTF' || currentUser.rol === 'Poda') {
-        // ATTF y Poda: consultas_servicios y TX y Cortes
-        tableOptions.forEach(option => {
-            const onclick = option.getAttribute('onclick');
-            if (onclick && (onclick.includes('consultas_servicios') || onclick.includes('TX y Cortes'))) {
-                option.style.display = 'block';
-            } else {
-                option.style.display = 'none';
-            }
-        });
-    } else if (currentUser.rol === 'Contratista' || currentUser.rol === 'Supervisor') {
-        // Todas las tablas
-        tableOptions.forEach(option => {
-            option.style.display = 'block';
-        });
-    } else {
-        // Consulta y cualquier otro: Todas las tablas
-        tableOptions.forEach(option => {
-            option.style.display = 'block';
-        });
-    }
-}
-
-
-
 function iniciarVerificacionSesion() {
   setInterval(async () => {
     if (!currentUser) return;
@@ -2471,19 +2526,39 @@ async function logout() {
 
 
     function generarCamposBusqueda(config) {
-      const searchGrid = document.getElementById('searchGrid');
-      let html = '';
-      config.fields.forEach(field => {
-        html += `
-          <div class="form-group">
+    const searchGrid = document.getElementById('searchGrid');
+    
+    // 🆕 Caso especial para gestión de usuarios
+    if (selectedTable === 'usuarios') {
+        searchGrid.innerHTML = `
+            <div class="form-group">
+                <label>Buscar Usuario:</label>
+                <input type="text" id="searchusuario" placeholder="Ingrese nombre de usuario" />
+                <button class="btn btn-secondary" onclick="buscarUsuarioAdmin()">🔍 Buscar</button>
+            </div>
+        `;
+        return;
+    }
+    
+    // Caso normal para otras tablas
+    // Caso normal para otras tablas
+let html = '';
+config.fields.forEach(field => {
+    // 🎯 Ocultar campo si tiene oculto: true Y la config dice que no mostrar
+    if (field.oculto && !CONFIG_VISIBILIDAD.mostrarNombreCliente) {
+        return; // Saltar este campo
+    }
+    
+    html += `
+        <div class="form-group">
             <label>${field.label}:</label>
             <input type="text" id="search${field.key}" placeholder="Ingrese ${field.label.toLowerCase()}" />
             <button class="btn btn-secondary" onclick="buscar('${field.key}', '${field.type}')">🔍 Buscar</button>
-          </div>
-        `;
-      });
-      searchGrid.innerHTML = html;
-    }
+        </div>
+    `;
+});
+searchGrid.innerHTML = html;
+}
 
     function volverATablas() {
       document.getElementById('searchSection').style.display = 'none';
@@ -2491,6 +2566,508 @@ async function logout() {
       document.getElementById('searchResults').innerHTML = '';
       selectedTable = null;
     }
+
+
+
+
+
+	// ========================================
+// 🆕 GESTIÓN DE USUARIOS (ADMIN/SUPERVISOR)
+// ========================================
+
+
+async function buscarUsuarioAdmin() {
+    // 🔒 VALIDACIÓN DE SEGURIDAD
+    if (currentUser.rol !== 'Administrador') {
+        alert('⛔ ACCESO DENEGADO\n\nSolo usuarios con rol "Administrador" pueden gestionar usuarios.');
+        volverATablas();
+        return;
+    }
+    
+    const busqueda = document.getElementById('searchusuario').value.trim();
+    
+    
+    if (!busqueda) {
+        alert('Por favor ingrese un nombre de usuario');
+        return;
+    }
+    
+    try {
+        const { data, error } = await supabaseClient
+            .from('usuarios')
+            .select('*')
+            .ilike('usuario', `%${busqueda}%`)
+            .limit(5);
+        
+        if (error) {
+            alert('Error al buscar: ' + error.message);
+            return;
+        }
+        
+        if (data.length === 0) {
+            document.getElementById('searchResults').innerHTML = '<div class="result-card">❌ No se encontraron usuarios</div>';
+            return;
+        }
+        
+        mostrarResultadosUsuarios(data);
+        
+    } catch (err) {
+        console.error('Error:', err);
+        alert('Error al buscar usuarios');
+    }
+}
+
+function mostrarResultadosUsuarios(usuarios) {
+    const container = document.getElementById('searchResults');
+    
+    let html = `<div class="result-header">✅ Se encontraron ${usuarios.length} usuario(s)</div>`;
+    
+    usuarios.forEach((user, index) => {
+        html += `
+            <div class="result-card">
+                <div class="result-header">Usuario ${index + 1}</div>
+                <div class="result-item"><strong>Usuario:</strong> ${user.usuario}</div>
+                <div class="result-item"><strong>Rol:</strong> ${user.rol}</div>
+                <div class="result-item"><strong>Activo:</strong> ${user.activo ? '✅ Sí' : '❌ No'}</div>
+                <div class="result-item"><strong>Bloqueado:</strong> ${user.bloqueado ? '🚫 Sí' : '✅ No'}</div>
+                <div class="action-buttons">
+                    <button class="btn btn-secondary" onclick="editarUsuario(${user.id})">✏️ Editar</button>
+                </div>
+            </div>
+        `;
+    });
+    
+    container.innerHTML = html;
+}
+
+	// ========================================
+// 🆕 SECCIONES DEL FORMULARIO DE EDICIÓN
+// ========================================
+
+function seccionComun(user) {
+    return `
+        <div style="background: #f8f9fa; padding: 20px; border-radius: 10px; margin-bottom: 20px;">
+            <h3 style="margin-top: 0; color: #2d3748;">📋 Información Básica</h3>
+            
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 15px;">
+                <div>
+                    <strong>Usuario:</strong> ${user.usuario}
+                </div>
+                <div>
+                    <strong>Rol:</strong> ${user.rol}
+                </div>
+                <div>
+                    <strong>Última actividad:</strong> ${user.ultima_actividad ? new Date(user.ultima_actividad).toLocaleString() : 'N/A'}
+                </div>
+                <div>
+                    <strong>Última conexión:</strong> ${user.ultimaconexion ? new Date(user.ultimaconexion).toLocaleString() : 'N/A'}
+                </div>
+            </div>
+            
+            <div class="form-group">
+                <label>✅ Activo:</label>
+                <select id="edit_activo" style="width: 100%; padding: 10px; border-radius: 8px; border: 2px solid #e1e5e9;">
+                    <option value="true" ${user.activo ? 'selected' : ''}>✅ Sí</option>
+                    <option value="false" ${!user.activo ? 'selected' : ''}>❌ No</option>
+                </select>
+            </div>
+            
+            <div class="form-group">
+                <label>🚫 Bloqueado:</label>
+                <select id="edit_bloqueado" style="width: 100%; padding: 10px; border-radius: 8px; border: 2px solid #e1e5e9;">
+                    <option value="false" ${!user.bloqueado ? 'selected' : ''}>❌ No</option>
+                    <option value="true" ${user.bloqueado ? 'selected' : ''}>🚫 Sí</option>
+                </select>
+            </div>
+            
+            <div class="form-group" id="razon_bloqueo_container" style="display: ${user.bloqueado ? 'block' : 'none'};">
+                <label>📝 Razón Bloqueo:</label>
+                <input type="text" id="edit_razon_bloqueo" value="${user.razon_bloqueo || ''}" 
+                       placeholder="Motivo del bloqueo"
+                       style="width: 100%; padding: 10px; border-radius: 8px; border: 2px solid #e1e5e9;">
+            </div>
+        </div>
+    `;
+}	
+
+
+	function seccionGestionTurnos(user) {
+    // Opciones de turnos
+    const opcionesTurnos = `
+        <option value="">-- Ninguno --</option>
+        ${Object.entries(TURNOS_ATTF).map(([key, turno]) => 
+            `<option value="${key}" ${user.turno_hoy === key ? 'selected' : ''}>${turno.nombre}</option>`
+        ).join('')}
+    `;
+    
+    const opcionesTurnosManana = `
+        <option value="">-- Ninguno --</option>
+        ${Object.entries(TURNOS_ATTF).map(([key, turno]) => 
+            `<option value="${key}" ${user.turno_manana === key ? 'selected' : ''}>${turno.nombre}</option>`
+        ).join('')}
+    `;
+    
+    const opcionesTurnosRegreso = `
+        <option value="">-- Ninguno --</option>
+        ${Object.entries(TURNOS_ATTF).map(([key, turno]) => 
+            `<option value="${key}" ${user.turno_regreso === key ? 'selected' : ''}>${turno.nombre}</option>`
+        ).join('')}
+    `;
+    
+    return `
+        <div style="background: #e3f2fd; padding: 20px; border-radius: 10px; margin-bottom: 20px;">
+            <h3 style="margin-top: 0; color: #1565c0;">⚙️ Gestión de Turnos (${user.rol})</h3>
+            
+            <div class="form-group">
+                <label>🔄 Turno HOY:</label>
+                <select id="edit_turno_hoy" style="width: 100%; padding: 10px; border-radius: 8px; border: 2px solid #e1e5e9;">
+                    ${opcionesTurnos}
+                </select>
+            </div>
+            
+            <div class="form-group">
+                <label>📅 Fecha Turno HOY:</label>
+                <input type="date" id="edit_fecha_turno_hoy" value="${user.fecha_turno_hoy || ''}" 
+                       style="width: 100%; padding: 10px; border-radius: 8px; border: 2px solid #e1e5e9;">
+            </div>
+            
+            <div class="form-group">
+                <label>🔄 Turno MAÑANA:</label>
+                <select id="edit_turno_manana" style="width: 100%; padding: 10px; border-radius: 8px; border: 2px solid #e1e5e9;">
+                    ${opcionesTurnosManana}
+                </select>
+            </div>
+            
+            <div class="form-group">
+                <label>📅 Fecha Turno MAÑANA:</label>
+                <input type="date" id="edit_fecha_turno_manana" value="${user.fecha_turno_manana || ''}" 
+                       style="width: 100%; padding: 10px; border-radius: 8px; border: 2px solid #e1e5e9;">
+            </div>
+            
+            <hr style="margin: 20px 0; border: 1px solid #90caf9;">
+            
+            <div class="form-group">
+                <label>🏖️ Descanso Inicio:</label>
+                <input type="date" id="edit_descanso_inicio" value="${user.descanso_fecha_inicio || ''}" 
+                       style="width: 100%; padding: 10px; border-radius: 8px; border: 2px solid #e1e5e9;">
+            </div>
+            
+            <div class="form-group">
+                <label>🏖️ Descanso Fin:</label>
+                <input type="date" id="edit_descanso_fin" value="${user.descanso_fecha_fin || ''}" 
+                       style="width: 100%; padding: 10px; border-radius: 8px; border: 2px solid #e1e5e9;">
+            </div>
+            
+            <div class="form-group">
+                <label>🔙 Turno Regreso:</label>
+                <select id="edit_turno_regreso" style="width: 100%; padding: 10px; border-radius: 8px; border: 2px solid #e1e5e9;">
+                    ${opcionesTurnosRegreso}
+                </select>
+            </div>
+            
+            <div class="form-group">
+                <label>📅 Fecha Turno Regreso:</label>
+                <input type="date" id="edit_fecha_turno_regreso" value="${user.fecha_turno_regreso || ''}" 
+                       style="width: 100%; padding: 10px; border-radius: 8px; border: 2px solid #e1e5e9;">
+            </div>
+            
+            <hr style="margin: 20px 0; border: 1px solid #90caf9;">
+            
+            <div class="form-group">
+                <label>📊 Contador Turnos:</label>
+                <input type="number" id="edit_contador" value="${user.contador_turnos || 0}" min="0" max="5"
+                       style="width: 100%; padding: 10px; border-radius: 8px; border: 2px solid #e1e5e9;">
+            </div>
+            
+            <div class="form-group">
+                <label>🔄 Estado Ciclo:</label>
+                <select id="edit_estado_ciclo" style="width: 100%; padding: 10px; border-radius: 8px; border: 2px solid #e1e5e9;">
+                    <option value="">-- Ninguno --</option>
+                    <option value="primera_vez" ${user.estado_ciclo === 'primera_vez' ? 'selected' : ''}>Primera vez</option>
+                    <option value="ciclo_normal" ${user.estado_ciclo === 'ciclo_normal' ? 'selected' : ''}>Ciclo normal</option>
+                </select>
+            </div>
+        </div>
+    `;
+}
+
+
+function seccionExcepcionesHorario(user) {
+    return `
+        <div style="background: #fff3e0; padding: 20px; border-radius: 10px; margin-bottom: 20px;">
+            <h3 style="margin-top: 0; color: #e65100;">📅 Excepciones de Horario (${user.rol})</h3>
+            
+            <div style="background: #fff; padding: 15px; border-radius: 8px; margin-bottom: 15px; border-left: 4px solid #ff9800;">
+                <strong>ℹ️ Información:</strong><br>
+                Por defecto, ${user.rol} tiene acceso Lun-Sáb de 5:00 AM a 6:00 PM.<br>
+                Aquí puedes habilitar excepciones puntuales.
+            </div>
+            
+            <div class="form-group">
+                <label>📆 Habilitar Domingo Específico:</label>
+                <input type="date" id="edit_domingo_fecha" value="${user.domingo_fecha || ''}" 
+                       placeholder="Selecciona un domingo"
+                       style="width: 100%; padding: 10px; border-radius: 8px; border: 2px solid #e1e5e9;">
+                <small style="color: #666;">Si seleccionas una fecha, el usuario podrá ingresar ese domingo</small>
+            </div>
+            
+            <div class="form-group">
+                <label style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
+                    <input type="checkbox" id="edit_domingo_permitido" ${user.domingo_permitido ? 'checked' : ''}
+                           style="width: 20px; height: 20px;">
+                    <span>✅ Domingo habilitado actualmente</span>
+                </label>
+            </div>
+            
+            <hr style="margin: 20px 0; border: 1px solid #ffcc80;">
+            
+            <div style="background: #fff; padding: 15px; border-radius: 8px; margin-bottom: 15px;">
+                <strong>⏰ Horario Excepcional para Día Específico (Opcional)</strong>
+            </div>
+            
+            <div class="form-group">
+                <label>📅 Fecha Excepcional:</label>
+                <input type="date" id="edit_fecha_excepcional" value="${user.fecha_excepcional || ''}" 
+                       style="width: 100%; padding: 10px; border-radius: 8px; border: 2px solid #e1e5e9;">
+                <small style="color: #666;">Día que tendrá horario diferente</small>
+            </div>
+            
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+                <div class="form-group">
+                    <label>🕐 Hora Inicio:</label>
+                    <input type="time" id="edit_horario_excepcional_inicio" value="${user.horario_excepcional_inicio || ''}" 
+                           style="width: 100%; padding: 10px; border-radius: 8px; border: 2px solid #e1e5e9;">
+                </div>
+                
+                <div class="form-group">
+                    <label>🕐 Hora Fin:</label>
+                    <input type="time" id="edit_horario_excepcional_fin" value="${user.horario_excepcional_fin || ''}" 
+                           style="width: 100%; padding: 10px; border-radius: 8px; border: 2px solid #e1e5e9;">
+                </div>
+            </div>
+            
+            <small style="color: #666;">Ejemplo: Si pones fecha 15-Oct con horario 4:00-20:00, ese día podrá ingresar de 4 AM a 8 PM</small>
+        </div>
+    `;
+}
+		
+
+	async function editarUsuario(userId) {
+    // 🔒 VALIDACIÓN DE SEGURIDAD
+    if (currentUser.rol !== 'Administrador') {
+        alert('⛔ ACCESO DENEGADO\n\nSolo usuarios con rol "Administrador" pueden editar usuarios.');
+        return;
+    }
+    
+   
+    try {
+        const { data, error } = await supabaseClient
+            .from('usuarios')
+            .select('*')
+            .eq('id', userId)
+            .single();
+        
+        if (error) {
+            alert('Error al cargar usuario: ' + error.message);
+            return;
+        }
+        
+        mostrarFormularioEdicion(data);
+        
+    } catch (err) {
+        console.error('Error:', err);
+        alert('Error al cargar usuario');
+    }
+}
+
+function mostrarFormularioEdicion(user) {
+    const container = document.getElementById('searchResults');
+    
+    // Determinar qué secciones mostrar según el rol
+    let seccionEspecifica = '';
+    
+    if (user.rol === 'ATTF' || user.rol === 'Poda') {
+        seccionEspecifica = seccionGestionTurnos(user);
+    } else if (user.rol === 'Lectura' || user.rol === 'Consulta' || user.rol === 'Contratista') {
+        seccionEspecifica = seccionExcepcionesHorario(user);
+    } else {
+        seccionEspecifica = `
+            <div style="background: #f0f0f0; padding: 20px; border-radius: 10px; text-align: center; color: #666;">
+                ℹ️ El rol ${user.rol} no requiere configuraciones especiales de horario
+            </div>
+        `;
+    }
+    
+    container.innerHTML = `
+        <div class="result-card" style="background: #ffffff; border: 2px solid #2196f3;">
+            <button class="btn btn-back" onclick="buscarUsuarioAdmin()">← Volver a Búsqueda</button>
+            
+            <div class="result-header">✏️ Editar Usuario: ${user.usuario}</div>
+            
+            <div style="background: #fff3cd; padding: 10px; border-radius: 8px; margin: 15px 0; border-left: 4px solid #ffc107;">
+                <strong>⚠️ Ten cuidado al modificar estos datos</strong><br>
+                Los cambios afectarán el acceso del usuario al sistema.
+            </div>
+            
+            ${seccionComun(user)}
+            
+            ${seccionEspecifica}
+            
+            <div class="action-buttons" style="margin-top: 20px;">
+                <button class="btn btn-secondary" onclick="guardarCambiosUsuario(${user.id})">💾 Guardar Cambios</button>
+                <button class="btn btn-danger" onclick="resetearUsuario(${user.id})">🔄 Resetear Usuario</button>
+            </div>
+        </div>
+    `;
+    
+    // Listener para mostrar/ocultar razón bloqueo
+    document.getElementById('edit_bloqueado').addEventListener('change', function() {
+        const container = document.getElementById('razon_bloqueo_container');
+        container.style.display = this.value === 'true' ? 'block' : 'none';
+    });
+    
+    // Listener para sincronizar checkbox de domingo con fecha
+    const domingoCheckbox = document.getElementById('edit_domingo_permitido');
+    const domingoFecha = document.getElementById('edit_domingo_fecha');
+    
+    if (domingoCheckbox && domingoFecha) {
+        domingoFecha.addEventListener('change', function() {
+            if (this.value) {
+                domingoCheckbox.checked = true;
+            }
+        });
+        
+        domingoCheckbox.addEventListener('change', function() {
+            if (!this.checked) {
+                domingoFecha.value = '';
+            }
+        });
+    }
+}
+
+
+
+async function guardarCambiosUsuario(userId) {
+    // 🔒 VALIDACIÓN DE SEGURIDAD
+    if (currentUser.rol !== 'Administrador') {
+        alert('⛔ ACCESO DENEGADO\n\nSolo usuarios con rol "Administrador" pueden guardar cambios.');
+        return;
+    }
+    
+    const confirmar = confirm('¿Estás seguro de guardar los cambios?\n\nEsto modificará la configuración del usuario.');
+    
+    if (!confirmar) return;
+    
+    try {
+        // Obtener usuario actual para saber su rol
+        const { data: userData } = await supabaseClient
+            .from('usuarios')
+            .select('rol')
+            .eq('id', userId)
+            .single();
+        
+        // Campos comunes para todos
+        const cambios = {
+            activo: document.getElementById('edit_activo').value === 'true',
+            bloqueado: document.getElementById('edit_bloqueado').value === 'true',
+            razon_bloqueo: document.getElementById('edit_razon_bloqueo')?.value || null
+        };
+        
+        // Campos específicos según rol
+        if (userData.rol === 'ATTF' || userData.rol === 'Poda') {
+            // Campos de gestión de turnos
+            cambios.turno_hoy = document.getElementById('edit_turno_hoy').value || null;
+            cambios.fecha_turno_hoy = document.getElementById('edit_fecha_turno_hoy').value || null;
+            cambios.turno_manana = document.getElementById('edit_turno_manana').value || null;
+            cambios.fecha_turno_manana = document.getElementById('edit_fecha_turno_manana').value || null;
+            cambios.descanso_fecha_inicio = document.getElementById('edit_descanso_inicio').value || null;
+            cambios.descanso_fecha_fin = document.getElementById('edit_descanso_fin').value || null;
+            cambios.turno_regreso = document.getElementById('edit_turno_regreso').value || null;
+            cambios.fecha_turno_regreso = document.getElementById('edit_fecha_turno_regreso').value || null;
+            cambios.contador_turnos = parseInt(document.getElementById('edit_contador').value) || 0;
+            cambios.estado_ciclo = document.getElementById('edit_estado_ciclo').value || null;
+        } else if (userData.rol === 'Lectura' || userData.rol === 'Consulta' || userData.rol === 'Contratista') {
+            // Campos de excepciones de horario
+            cambios.domingo_permitido = document.getElementById('edit_domingo_permitido').checked;
+            cambios.domingo_fecha = document.getElementById('edit_domingo_fecha').value || null;
+            cambios.horario_excepcional_inicio = document.getElementById('edit_horario_excepcional_inicio').value || null;
+            cambios.horario_excepcional_fin = document.getElementById('edit_horario_excepcional_fin').value || null;
+            cambios.fecha_excepcional = document.getElementById('edit_fecha_excepcional').value || null;
+        }
+        
+        const { error } = await supabaseClient
+            .from('usuarios')
+            .update(cambios)
+            .eq('id', userId);
+        
+        if (error) {
+            alert('Error al guardar: ' + error.message);
+            return;
+        }
+        
+        alert('✅ Cambios guardados exitosamente');
+        buscarUsuarioAdmin();
+        
+    } catch (err) {
+        console.error('Error:', err);
+        alert('Error al guardar cambios');
+    }
+}
+
+
+
+async function resetearUsuario(userId) {
+    // 🔒 VALIDACIÓN DE SEGURIDAD
+    if (currentUser.rol !== 'Administrador') {
+        alert('⛔ ACCESO DENEGADO\n\nSolo usuarios con rol "Administrador" pueden resetear usuarios.');
+        return;
+    }
+    const confirmar = confirm(
+        '⚠️ ¿RESETEAR USUARIO?\n\n' +
+        'Esto eliminará:\n' +
+        '- Turnos programados\n' +
+        '- Descansos programados\n' +
+        '- Contador de turnos\n\n' +
+        'El usuario deberá configurar todo de nuevo.\n\n' +
+        '¿Continuar?'
+    );
+    
+    if (!confirmar) return;
+    
+    try {
+        const { error } = await supabaseClient
+            .from('usuarios')
+            .update({
+                turno_hoy: null,
+                fecha_turno_hoy: null,
+                turno_manana: null,
+                fecha_turno_manana: null,
+                descanso_fecha_inicio: null,
+                descanso_fecha_fin: null,
+                turno_regreso: null,
+                fecha_turno_regreso: null,
+                contador_turnos: 0,
+                estado_ciclo: 'primera_vez',
+                bloqueado: false,
+                razon_bloqueo: null
+            })
+            .eq('id', userId);
+        
+        if (error) {
+            alert('Error al resetear: ' + error.message);
+            return;
+        }
+        
+        alert('✅ Usuario reseteado exitosamente');
+        buscarUsuarioAdmin();
+        
+    } catch (err) {
+        console.error('Error:', err);
+        alert('Error al resetear usuario');
+    }
+}
+
+
 
    // ===================================================================
 // 🔍 FUNCIÓN UNIFICADA DE BÚSQUEDA (VERSIÓN COMPLETA Y OPTIMIZADA)
@@ -2505,6 +3082,9 @@ async function buscar(campo, tipo) {
         alert(`Por favor ingrese un valor para ${campo}`);
         return;
     }
+
+    // 🆕 LIMPIAR AUTOMÁTICAMENTE OTROS CAMPOS
+    limpiarOtrosCampos(campo);
 
     await incrementarContadorBusquedas();
     
@@ -2532,6 +3112,30 @@ async function buscar(campo, tipo) {
     }
 }
 
+
+// ========================================
+// 🧹 FUNCIÓN: Limpiar automáticamente otros campos de búsqueda
+// ========================================
+function limpiarOtrosCampos(campoActual) {
+    const config = tableConfigs[selectedTable];
+    if (!config || !config.fields) return;
+    
+    // Recorrer todos los campos de la tabla actual
+    config.fields.forEach(field => {
+        // Si NO es el campo actual, limpiarlo
+        if (field.key !== campoActual) {
+            const input = document.getElementById(`search${field.key}`);
+            if (input) {
+                input.value = ''; // Limpiar el valor
+            }
+        }
+    });
+    
+    console.log(`🧹 Campos limpiados. Buscando solo por: ${campoActual}`);
+}
+
+
+
 // ===================================================================
 // 📊 MOSTRAR RESULTADOS PRINCIPALES
 // ===================================================================
@@ -2552,15 +3156,20 @@ function mostrarResultados(resultados) {
     resultados.forEach((item, index) => {
         html += `<div class="result-card"><div class="result-header">Resultado ${index + 1}</div>`;
         config.resultFields.forEach(field => {
-            let valor = String(item[field] || 'N/A');
-            
-            if ((field === 'Comentario' || field === 'ComentarioGeneral') && valor !== 'N/A') { 
-                valor = formatearComentario(valor);
-                html += `<div class="result-item"><strong>${field}:</strong><div style="margin-left: 10px; line-height: 1.6;">${valor}</div></div>`;
-            } else {
-                html += `<div class="result-item"><strong>${field}:</strong> ${valor}</div>`;
-            }
-        });
+    // 🎯 Ocultar NombreCliente en resultados si la config lo indica
+    if (field === 'NombreCliente' && !CONFIG_VISIBILIDAD.mostrarNombreCliente) {
+        return; // No mostrar este campo
+    }
+    
+    let valor = String(item[field] || 'N/A');
+    
+    if ((field === 'Comentario' || field === 'ComentarioGeneral') && valor !== 'N/A') { 
+        valor = formatearComentario(valor);
+        html += `<div class="result-item"><strong>${field}:</strong><div style="margin-left: 10px; line-height: 1.6;">${valor}</div></div>`;
+    } else {
+        html += `<div class="result-item"><strong>${field}:</strong> ${valor}</div>`;
+    }
+});
         
         html += generarBotonesAccion(item, index, config);
         html += '</div>'; // Cierre result-card
@@ -2856,15 +3465,20 @@ function mostrarDetalleRelacionados(tabla) {
     datos.forEach((item, index) => {
         html += `<div class="result-card"><div class="result-header">Resultado ${index + 1}</div>`;
         config.resultFields.forEach(field => {
-            let valor = String(item[field] || 'N/A');
-            
-            if ((field === 'Comentario' || field === 'ComentarioGeneral') && valor !== 'N/A') {
-                valor = formatearComentario(valor);
-                html += `<div class="result-item"><strong>${field}:</strong><div style="margin-left: 10px; line-height: 1.6;">${valor}</div></div>`;
-            } else {
-                html += `<div class="result-item"><strong>${field}:</strong> ${valor}</div>`;
-            }
-        });
+    // 🎯 Ocultar NombreCliente en resultados relacionados
+    if (field === 'NombreCliente' && !CONFIG_VISIBILIDAD.mostrarNombreCliente) {
+        return; // No mostrar este campo
+    }
+    
+    let valor = String(item[field] || 'N/A');
+    
+    if ((field === 'Comentario' || field === 'ComentarioGeneral') && valor !== 'N/A') {
+        valor = formatearComentario(valor);
+        html += `<div class="result-item"><strong>${field}:</strong><div style="margin-left: 10px; line-height: 1.6;">${valor}</div></div>`;
+    } else {
+        html += `<div class="result-item"><strong>${field}:</strong> ${valor}</div>`;
+    }
+});
         
         html += '<div class="action-buttons">';
         config.actions.forEach(action => {
