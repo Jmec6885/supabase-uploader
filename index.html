@@ -2401,12 +2401,13 @@ function descargarKML() {
 
     const ubicaciones = [];
     consultasData.forEach((item, index) => {
-        const coordenadas = item.Coordenadas || item.coordenadas || item.Coordenadasgis || item.coordenadasgis;
-        if (coordenadas) {
-            const etiqueta = item.NombreCliente || item.CuentaContrato || item.Medidor || `Punto ${index + 1}`;
-            ubicaciones.push({ etiqueta, coordenadas });
-        }
-    });
+    const coordenadas = item.Coordenadas || item.coordenadas || item.Coordenadasgis || item.coordenadasgis;
+    if (coordenadas) {
+        // 🎯 CAMBIO: Priorizar Medidor como etiqueta
+        const etiqueta = item.Medidor || item.CuentaContrato || `Punto ${index + 1}`;
+        ubicaciones.push({ etiqueta, coordenadas });
+    }
+});
 
     if (ubicaciones.length === 0) {
         alert('No se encontraron coordenadas válidas para descargar');
@@ -3135,6 +3136,98 @@ function limpiarOtrosCampos(campoActual) {
 }
 
 
+// ========================================
+// 🗺️ BÚSQUEDA MÚLTIPLE PARA GENERAR KML
+// ========================================
+async function busquedaMultipleKML(campo, valores) {
+    console.log(`🔍 Búsqueda múltiple KML por ${campo}:`, valores);
+    
+    mostrarIndicadorBusqueda();
+    
+    // Array para acumular todos los resultados
+    let todosLosResultados = [];
+    
+    // Buscar cada valor individualmente
+    for (const valor of valores) {
+        if (!valor) continue; // Saltar valores vacíos
+        
+        let query = supabaseClient.from(selectedTable).select('*');
+        query = query.eq(campo, valor); // Búsqueda exacta
+        
+        const { data, error } = await query;
+        
+        if (error) {
+            console.error(`Error buscando ${valor}:`, error.message);
+            continue;
+        }
+        
+        if (data && data.length > 0) {
+            todosLosResultados = todosLosResultados.concat(data);
+        }
+    }
+    
+    ocultarIndicadorBusqueda();
+    
+    // Validar resultados
+    if (todosLosResultados.length === 0) {
+        alert(`❌ No se encontraron resultados para los valores ingresados.\n\nValores buscados: ${valores.join(', ')}`);
+        return;
+    }
+    
+    // Filtrar solo los que tienen coordenadas
+    const conCoordenadas = todosLosResultados.filter(item => {
+        const coords = item.Coordenadas || item.coordenadas || item.Coordenadasgis || item.coordenadasgis;
+        return coords && coords.includes(',');
+    });
+    
+    if (conCoordenadas.length === 0) {
+        alert(`⚠️ Se encontraron ${todosLosResultados.length} resultado(s), pero ninguno tiene coordenadas válidas.\n\nNo se puede generar KML.`);
+        mostrarResultados(todosLosResultados); // Mostrar resultados de todas formas
+        return;
+    }
+    
+    // Guardar en consultasData para la función de descarga
+    consultasData = todosLosResultados;
+    
+    // Mostrar resultados
+    mostrarResultadosKML(conCoordenadas, todosLosResultados.length);
+}
+
+
+// ========================================
+// 📊 MOSTRAR RESULTADOS DE BÚSQUEDA KML
+// ========================================
+function mostrarResultadosKML(resultadosConCoordenadas, totalResultados) {
+    const container = document.getElementById('searchResults');
+    
+    let html = `
+        <div class="result-card" style="background: #f0f9ff; border: 2px solid #3b82f6;">
+            <div class="result-header">
+                ✅ Búsqueda múltiple completada
+            </div>
+            <div style="background: white; padding: 15px; border-radius: 8px; margin: 15px 0;">
+                <strong>📊 Resumen:</strong><br>
+                • Total de resultados encontrados: <strong>${totalResultados}</strong><br>
+                • Con coordenadas válidas: <strong>${resultadosConCoordenadas.length}</strong><br>
+                • Sin coordenadas: <strong>${totalResultados - resultadosConCoordenadas.length}</strong>
+            </div>
+            
+            <div style="background: #fff3cd; padding: 12px; border-radius: 8px; margin: 15px 0; border-left: 4px solid #ffc107;">
+                <strongℹ️ Información:</strong><br>
+                Los puntos en el KML usarán el <strong>Medidor</strong> como etiqueta de identificación.
+            </div>
+            
+            <div style="text-align: center; margin-top: 20px;">
+                <button class="btn btn-secondary" onclick="descargarKML()" style="font-size: 18px; padding: 18px 40px;">
+                    📥 Descargar KML (${resultadosConCoordenadas.length} puntos)
+                </button>
+            </div>
+        </div>
+    `;
+    
+    container.innerHTML = html;
+}
+
 
 // ===================================================================
 // 📊 MOSTRAR RESULTADOS PRINCIPALES
@@ -3226,6 +3319,12 @@ function formatearComentario(valor) {
         .replace(/Fecha Ejec/g, '<br><strong>Fecha Ejec:</strong>')
         .replace(/Ejecutada por/g, '<br><strong>Ejecutada por:</strong>')
         .replace(/Fecha Lect/g, '<br><strong>Fecha Lect:</strong>')
+	.replace(/Cliente/g, '<br><strong>Cliente:</strong>')
+ 	.replace(/Nombre Cliente/g, '<br><strong>Nombre Cliente:</strong>')
+        .replace(/Tension/g, '<br><strong>Tension:</strong>')
+	.replace(/Multiplicador/g, '<br><strong>Multiplicador:</strong>')
+	.replace(/Forma/g, '<br><strong>Forma:</strong>')
+	.replace(/Hilos/g, '<br><strong>Hilos:</strong>')
         .replace(/(https?:\/\/[^\s]+)/g, '<br><a href="$1" target="_blank" style="color: #3b54d3; text-decoration: underline; font-weight: 600;">🔗 Ver enlace</a>');
 }
 
