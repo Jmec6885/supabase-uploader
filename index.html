@@ -577,6 +577,12 @@
     			<div class="table-title">Gestión de Usuarios</div>
     			<div class="table-description">Administrar usuarios del sistema</div>
 		    </div>
+
+		    <div class="table-option" onclick="seleccionarTabla('kml_ruta')">
+    			<span class="table-icon">📍</span>
+    			<div class="table-title">KML Ruta</div>
+   			 <div class="table-description">Generar rutas por unidad</div>
+		    </div>
                 </div>
             </div>
         </div>
@@ -650,8 +656,9 @@
     let consultasData = [];
     // === CONFIGURACIÓN DE VISIBILIDAD ===
 const CONFIG_VISIBILIDAD = {
-    mostrarNombreCliente: false  // Cambiar a true cuando necesites mostrar el nombre
-}; 
+    mostrarNombreCliente: false,
+    camposAdminSolo: ['NombreCliente', 'Direccion'] // Solo Administrador ve estos campos
+};
 
     // --- 2. CONFIGURACIÓN E INICIALIZACIÓN DE SUPABASE ---
     const SUPABASE_URL = 'https://bsxllefnehbwkuqbelec.supabase.co';
@@ -826,16 +833,15 @@ async function verificarInactividad(userData) {
     
     // Todos los demás roles: 5 días
     if (diasInactivo >= 5) {
-        // Bloquear usuario
-        await supabaseClient
-            .from('usuarios')
-            .update({ 
-                bloqueado: true,
-                razon_bloqueo: `Inactividad de ${diasInactivo} días`,
-                sessionactiva: false,
-                sessiontoken: null
-            })
-            .eq('id', userData.id);
+    // Bloquear usuario
+    await supabaseClient
+        .from('usuarios')
+        .update({ 
+            razon_bloqueo: `Inactividad de ${diasInactivo} días`,
+            sessionactiva: false,
+            sessiontoken: null
+        })
+        .eq('id', userData.id);
         
         return { 
             inactivo: true, 
@@ -960,17 +966,28 @@ async function login() {
         }
         
         // 2. Verificar bloqueo manual
-        if (data.bloqueado === true) {
-            alert(`🚫 Usuario bloqueado\n\nMotivo: ${data.razon_bloqueo || 'No especificado'}\n\nContacte al administrador para desbloquear su cuenta.`);
-            return;
-        }
+        // 2. Verificar bloqueo (si razon_bloqueo tiene texto = está bloqueado)
+if (data.razon_bloqueo && data.razon_bloqueo.trim() !== '') {
+    alert(`🚫 Usuario bloqueado\n\nMotivo: ${data.razon_bloqueo}`);
+    return;
+}
+        
         
         // 3. Verificar inactividad (bloquea automáticamente si >= 5 días)
-        const checkInactividad = await verificarInactividad(data);
-        if (checkInactividad.inactivo) {
-            alert(checkInactividad.mensaje);
-            return;
-        }
+const checkInactividad = await verificarInactividad(data);
+if (checkInactividad.inactivo) {
+    // Asegurarse de que el bloqueo esté reflejado en BD
+    await supabaseClient
+        .from('usuarios')
+        .update({ 
+            bloqueado: true,
+            razon_bloqueo: checkInactividad.mensaje || 'Inactividad prolongada'
+        })
+        .eq('id', data.id);
+    
+    alert(checkInactividad.mensaje);
+    return;
+}
 
         // 4. Verificar horario permitido (validación básica por rol)
         const verificacion = verificarHorarioPermitido(data.rol, data);
@@ -1012,6 +1029,7 @@ async function login() {
             return;
         }
 
+       
         // Para otros roles: acceso directo
         document.getElementById('currentUser').textContent = `Bienvenido, ${data.usuario}`;
         document.getElementById('userInfo').classList.remove('hidden');
@@ -1021,6 +1039,12 @@ async function login() {
         iniciarVerificacionSesion();
         guardarDatosOffline();
         mostrarTablasSegunRol();
+
+        // 🔄 Mostrar mensaje de actualización y recargar
+        // 🔄 Forzar actualización de la página para obtener última versión
+	setTimeout(() => {
+    	location.reload(true);
+   }, 500);
 
     } catch (err) {
         console.error('Error de login:', err);
@@ -1993,22 +2017,21 @@ async function desbloquearUsuario(username) {
     }
     
     const { error } = await supabaseClient
-        .from('usuarios')
-        .update({
-            bloqueado: false,
-            razon_bloqueo: null,
-            estado_ciclo: 'primera_vez', // Resetear para ATTF
-            contador_turnos: 0,
-            turno_hoy: null,
-            fecha_turno_hoy: null,
-            turno_manana: null,
-            fecha_turno_manana: null,
-            descanso_fecha_inicio: null,
-            descanso_fecha_fin: null,
-            turno_regreso: null,
-            fecha_turno_regreso: null,
-            ultima_actividad: new Date().toISOString()
-        })
+    .from('usuarios')
+    .update({
+        razon_bloqueo: null,
+        ultima_actividad: new Date().toISOString(),
+        estado_ciclo: 'primera_vez',
+        contador_turnos: 0,
+        turno_hoy: null,
+        fecha_turno_hoy: null,
+        turno_manana: null,
+        fecha_turno_manana: null,
+        descanso_fecha_inicio: null,
+        descanso_fecha_fin: null,
+        turno_regreso: null,
+        fecha_turno_regreso: null
+    })
         .eq('usuario', username);
     
     if (error) {
@@ -2073,7 +2096,7 @@ async function incrementarContadorBusquedas() {
       { key: 'Medidor', label: 'Medidor', type: 'exact' },
       { key: 'NombreCliente', label: 'Nombre Cliente', type: 'like', oculto: true }  // ← AGREGADO oculto: true
     ],
-    resultFields: ['CuentaContrato', 'Medidor', 'NombreCliente', 'ComentarioGeneral'],
+    resultFields: ['CuentaContrato', 'Medidor', 'NombreCliente', 'Direccion', 'ComentarioGeneral'],
     actions: ['Coordenadas', 'Coordenadasgis', 'FotoLink', 'Grafica']
 },
       'Consumos': {
@@ -2142,7 +2165,15 @@ async function incrementarContadorBusquedas() {
     resultFields: ['usuario', 'rol', 'activo', 'bloqueado'],
     actions: [],
     esAdmin: true
-  }
+  },
+       'kml_ruta': {
+    title: 'KML Ruta',
+    icon: '📍',
+    fields: [],
+    resultFields: [],
+    actions: [],
+    esKMLRuta: true
+}
 };
 
     // ✅ Variables para las gráficas
@@ -2540,14 +2571,21 @@ async function logout() {
         `;
         return;
     }
+	// 🆕 Caso especial para KML Ruta
+if (selectedTable === 'kml_ruta') {
+    cargarInterfazKMLRuta();
+    return;
+}
+
+
     
     // Caso normal para otras tablas
-    // Caso normal para otras tablas
+    
 let html = '';
-config.fields.forEach(field => {
-    // 🎯 Ocultar campo si tiene oculto: true Y la config dice que no mostrar
-    if (field.oculto && !CONFIG_VISIBILIDAD.mostrarNombreCliente) {
-        return; // Saltar este campo
+config.resultFields.forEach(field => {
+    // 🎯 Ocultar campos solo-admin
+    if (CONFIG_VISIBILIDAD.camposAdminSolo.includes(field) && currentUser.rol !== 'Administrador') {
+        return;
     }
     
     html += `
@@ -2674,14 +2712,13 @@ function seccionComun(user) {
             </div>
             
             <div class="form-group">
-                <label>🚫 Bloqueado:</label>
-                <select id="edit_bloqueado" style="width: 100%; padding: 10px; border-radius: 8px; border: 2px solid #e1e5e9;">
-                    <option value="false" ${!user.bloqueado ? 'selected' : ''}>❌ No</option>
-                    <option value="true" ${user.bloqueado ? 'selected' : ''}>🚫 Sí</option>
-                </select>
-            </div>
+    <label>🚫 Estado:</label>
+    <div style="padding: 10px; background: ${user.razon_bloqueo ? '#ffebee' : '#e8f5e9'}; border-radius: 8px;">
+        ${user.razon_bloqueo ? '🚫 <strong>BLOQUEADO</strong>' : '✅ <strong>ACTIVO</strong>'}
+    </div>
+</div>
             
-            <div class="form-group" id="razon_bloqueo_container" style="display: ${user.bloqueado ? 'block' : 'none'};">
+            <div class="form-group">
                 <label>📝 Razón Bloqueo:</label>
                 <input type="text" id="edit_razon_bloqueo" value="${user.razon_bloqueo || ''}" 
                        placeholder="Motivo del bloqueo"
@@ -2863,10 +2900,10 @@ function seccionExcepcionesHorario(user) {
    
     try {
         const { data, error } = await supabaseClient
-            .from('usuarios')
-            .select('*')
-            .eq('id', userId)
-            .single();
+    .from('usuarios')
+    .select('id, usuario, rol, activo, razon_bloqueo, ultima_actividad, ultimaconexion, turno_hoy, fecha_turno_hoy, turno_manana, fecha_turno_manana, descanso_fecha_inicio, descanso_fecha_fin, turno_regreso, fecha_turno_regreso, contador_turnos, estado_ciclo, domingo_permitido, domingo_fecha, horario_excepcional_inicio, horario_excepcional_fin, fecha_excepcional')
+    .eq('id', userId)
+    .single();
         
         if (error) {
             alert('Error al cargar usuario: ' + error.message);
@@ -2921,12 +2958,7 @@ function mostrarFormularioEdicion(user) {
         </div>
     `;
     
-    // Listener para mostrar/ocultar razón bloqueo
-    document.getElementById('edit_bloqueado').addEventListener('change', function() {
-        const container = document.getElementById('razon_bloqueo_container');
-        container.style.display = this.value === 'true' ? 'block' : 'none';
-    });
-    
+        
     // Listener para sincronizar checkbox de domingo con fecha
     const domingoCheckbox = document.getElementById('edit_domingo_permitido');
     const domingoFecha = document.getElementById('edit_domingo_fecha');
@@ -2969,10 +3001,9 @@ async function guardarCambiosUsuario(userId) {
         
         // Campos comunes para todos
         const cambios = {
-            activo: document.getElementById('edit_activo').value === 'true',
-            bloqueado: document.getElementById('edit_bloqueado').value === 'true',
-            razon_bloqueo: document.getElementById('edit_razon_bloqueo')?.value || null
-        };
+    activo: document.getElementById('edit_activo').value === 'true',
+    razon_bloqueo: document.getElementById('edit_razon_bloqueo')?.value || null
+};
         
         // Campos específicos según rol
         if (userData.rol === 'ATTF' || userData.rol === 'Poda') {
@@ -3037,34 +3068,33 @@ async function resetearUsuario(userId) {
     
     try {
         const { error } = await supabaseClient
-            .from('usuarios')
-            .update({
-                turno_hoy: null,
-                fecha_turno_hoy: null,
-                turno_manana: null,
-                fecha_turno_manana: null,
-                descanso_fecha_inicio: null,
-                descanso_fecha_fin: null,
-                turno_regreso: null,
-                fecha_turno_regreso: null,
-                contador_turnos: 0,
-                estado_ciclo: 'primera_vez',
-                bloqueado: false,
-                razon_bloqueo: null
-            })
+    .from('usuarios')
+    .update({
+        razon_bloqueo: null,
+        ultima_actividad: new Date().toISOString(),
+        turno_hoy: null,
+        fecha_turno_hoy: null,
+        turno_manana: null,
+        fecha_turno_manana: null,
+        descanso_fecha_inicio: null,
+        descanso_fecha_fin: null,
+        turno_regreso: null,
+        fecha_turno_regreso: null,
+        contador_turnos: 0,
+        estado_ciclo: 'primera_vez'
+    })
             .eq('id', userId);
         
         if (error) {
-            alert('Error al resetear: ' + error.message);
+            alert('Error: ' + error.message);
             return;
         }
         
-        alert('✅ Usuario reseteado exitosamente');
+        alert('✅ Usuario desbloqueado y reseteado');
         buscarUsuarioAdmin();
         
     } catch (err) {
         console.error('Error:', err);
-        alert('Error al resetear usuario');
     }
 }
 
@@ -3113,6 +3143,224 @@ async function buscar(campo, tipo) {
     }
 }
 
+	// ========================================
+// 🔄 TRANSFORMAR USUARIO A FORMATO UNIDAD
+// ========================================
+function transformarUsuarioAUnidad(usuario) {
+    // Ejemplo: CLOPCPAC001 → CL-OPC-PAC-001
+    if (!usuario || usuario.length < 11) return usuario;
+    
+    // Insertar guiones en posiciones específicas
+    return usuario.slice(0, 2) + '-' + 
+           usuario.slice(2, 5) + '-' + 
+           usuario.slice(5, 8) + '-' + 
+           usuario.slice(8);
+}
+
+
+	// ========================================
+// 📍 CARGAR INTERFAZ KML RUTA
+// ========================================
+async function cargarInterfazKMLRuta() {
+    const searchGrid = document.getElementById('searchGrid');
+    
+    // Mostrar indicador de carga
+    searchGrid.innerHTML = '<div class="loading" style="display: block; margin: 20px auto;"></div>';
+    
+    try {
+        // Obtener lista de unidades únicas de OS Pendientes
+        const { data: unidades, error } = await supabaseClient
+            .from('OS Pendientes')
+            .select('Unidad')
+            .not('Unidad', 'is', null);
+        
+        if (error) {
+            searchGrid.innerHTML = '<div class="result-card">❌ Error al cargar unidades</div>';
+            return;
+        }
+        
+        // Obtener unidades únicas y ordenadas
+        const unidadesUnicas = [...new Set(unidades.map(u => u.Unidad))].sort();
+        
+        // Filtrar según rol
+        let unidadesFiltradas = [];
+        
+        if (currentUser.rol === 'Administrador' || currentUser.rol === 'Supervisor') {
+            // Ver todas las unidades
+            unidadesFiltradas = unidadesUnicas;
+        } else if (currentUser.rol === 'Consulta' || currentUser.rol === 'Contratista') {
+            // Solo su unidad
+            const miUnidad = transformarUsuarioAUnidad(currentUser.usuario);
+            unidadesFiltradas = unidadesUnicas.filter(u => u === miUnidad);
+        } else {
+            searchGrid.innerHTML = '<div class="result-card">⚠️ Tu rol no tiene acceso a esta función</div>';
+            return;
+        }
+        
+        if (unidadesFiltradas.length === 0) {
+            searchGrid.innerHTML = '<div class="result-card">⚠️ No se encontraron unidades disponibles</div>';
+            return;
+        }
+        
+        // Generar interfaz
+        searchGrid.innerHTML = `
+            <div class="form-group">
+                <label>📍 Seleccionar Unidad:</label>
+                <select id="selectUnidad" style="width: 100%; padding: 15px; border-radius: 12px; border: 2px solid #e1e5e9; font-size: 16px;">
+                    <option value="">-- Seleccione una unidad --</option>
+                    ${unidadesFiltradas.map(u => `<option value="${u}">${u}</option>`).join('')}
+                </select>
+                <small style="color: #666; display: block; margin-top: 8px;">
+                    ${unidadesFiltradas.length} unidad(es) disponible(s)
+                </small>
+            </div>
+            
+            <div style="text-align: center; margin-top: 20px;">
+                <button class="btn btn-secondary" onclick="generarKMLPorUnidad()" style="font-size: 16px; padding: 15px 30px;">
+                    🗺️ Generar KML
+                </button>
+            </div>
+        `;
+        
+    } catch (err) {
+        console.error('Error cargando KML Ruta:', err);
+        searchGrid.innerHTML = '<div class="result-card">❌ Error de conexión</div>';
+    }
+}
+
+
+	// ========================================
+// 🗺️ GENERAR KML POR UNIDAD SELECCIONADA
+// ========================================
+async function generarKMLPorUnidad() {
+    const unidadSeleccionada = document.getElementById('selectUnidad').value;
+    
+    if (!unidadSeleccionada) {
+        alert('Por favor seleccione una unidad');
+        return;
+    }
+    
+    const resultsContainer = document.getElementById('searchResults');
+    resultsContainer.innerHTML = '<div class="loading" style="display: block; margin: 20px auto;"></div>';
+    
+    try {
+        // Buscar todas las OS Pendientes de esa unidad
+        const { data: osPendientes, error } = await supabaseClient
+            .from('OS Pendientes')
+            .select('*')
+            .eq('Unidad', unidadSeleccionada);
+        
+        if (error) {
+            resultsContainer.innerHTML = '<div class="result-card">❌ Error al buscar OS</div>';
+            return;
+        }
+        
+        if (!osPendientes || osPendientes.length === 0) {
+            resultsContainer.innerHTML = `
+                <div class="result-card" style="background: #fff3cd; border: 2px solid #ffc107;">
+                    <div class="result-header">⚠️ Sin resultados</div>
+                    <p>No se encontraron OS Pendientes para la unidad: <strong>${unidadSeleccionada}</strong></p>
+                </div>
+            `;
+            return;
+        }
+        
+        // Filtrar por tipo de coordenadas
+        const conCoordenadasLector = osPendientes.filter(os => 
+            os.Coordenadas && os.Coordenadas.trim() !== '' && os.Coordenadas.includes(',')
+        );
+        
+        const conCoordenadasGIS = osPendientes.filter(os => 
+            os.Coordendasgis && os.Coordendasgis.trim() !== '' && os.Coordendasgis.includes(',')
+        );
+        
+        // Guardar en variables globales para descarga
+        window.kmlDataLector = conCoordenadasLector;
+        window.kmlDataGIS = conCoordenadasGIS;
+        
+        // Mostrar resultados
+        resultsContainer.innerHTML = `
+            <div class="result-card" style="background: #f0f9ff; border: 2px solid #3b82f6;">
+                <div class="result-header">✅ Búsqueda completada - ${unidadSeleccionada}</div>
+                
+                <div style="background: white; padding: 15px; border-radius: 8px; margin: 15px 0;">
+                    <strong>📊 Resumen:</strong><br>
+                    • Total de OS buscadas: <strong>${osPendientes.length}</strong><br>
+                    • Con Coordenadas Lector: <strong>${conCoordenadasLector.length}</strong><br>
+                    • Con Coordenadas GIS: <strong>${conCoordenadasGIS.length}</strong>
+                </div>
+                
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-top: 20px;">
+                    <button class="btn btn-secondary" 
+                            onclick="descargarKMLLector()" 
+                            ${conCoordenadasLector.length === 0 ? 'disabled style="opacity: 0.5; cursor: not-allowed;"' : ''}>
+                        📥 Descargar KML Lector<br>
+                        <small>(${conCoordenadasLector.length} puntos)</small>
+                    </button>
+                    
+                    <button class="btn btn-secondary" 
+                            onclick="descargarKMLGIS()" 
+                            ${conCoordenadasGIS.length === 0 ? 'disabled style="opacity: 0.5; cursor: not-allowed;"' : ''}>
+                        📥 Descargar KML GIS<br>
+                        <small>(${conCoordenadasGIS.length} puntos)</small>
+                    </button>
+                </div>
+            </div>
+        `;
+        
+    } catch (err) {
+        console.error('Error generando KML:', err);
+        resultsContainer.innerHTML = '<div class="result-card">❌ Error de conexión</div>';
+    }
+}
+
+	// ========================================
+// 📥 DESCARGAR KML COORDENADAS LECTOR
+// ========================================
+function descargarKMLLector() {
+    if (!window.kmlDataLector || window.kmlDataLector.length === 0) {
+        alert('No hay coordenadas de lector para descargar');
+        return;
+    }
+    
+    const ubicaciones = window.kmlDataLector.map(os => ({
+        etiqueta: os.OSATMO || 'Sin OS',
+        coordenadas: os.Coordenadas
+    }));
+    
+    const kmlString = generarKMLString(ubicaciones);
+    const blob = new Blob([kmlString], { type: 'application/vnd.google-earth.kml+xml' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `KML_Lector_${new Date().getTime()}.kml`;
+    a.click();
+    URL.revokeObjectURL(url);
+}
+
+	// ========================================
+// 📥 DESCARGAR KML COORDENADAS GIS
+// ========================================
+function descargarKMLGIS() {
+    if (!window.kmlDataGIS || window.kmlDataGIS.length === 0) {
+        alert('No hay coordenadas GIS para descargar');
+        return;
+    }
+    
+    const ubicaciones = window.kmlDataGIS.map(os => ({
+        etiqueta: os.OSATMO || 'Sin OS',
+        coordenadas: os.Coordendasgis
+    }));
+    
+    const kmlString = generarKMLString(ubicaciones);
+    const blob = new Blob([kmlString], { type: 'application/vnd.google-earth.kml+xml' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `KML_GIS_${new Date().getTime()}.kml`;
+    a.click();
+    URL.revokeObjectURL(url);
+}
 
 // ========================================
 // 🧹 FUNCIÓN: Limpiar automáticamente otros campos de búsqueda
