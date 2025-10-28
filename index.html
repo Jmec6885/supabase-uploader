@@ -583,6 +583,12 @@
     			<div class="table-title">KML Ruta</div>
    			 <div class="table-description">Generar rutas por unidad</div>
 		    </div>
+		    
+		    <div class="table-option" onclick="seleccionarTabla('detalle_os')">
+    			<span class="table-icon">📊</span>
+    			<div class="table-title">Detalle OS</div>
+    			<div class="table-description">Análisis por unidad y estado</div>
+		    </div>
                 </div>
             </div>
         </div>
@@ -1101,31 +1107,32 @@ async function loginATTF(userData) {
     }
     
     // 3. Verificar si tiene turno programado para HOY
-    if (userData.turno_hoy && userData.fecha_turno_hoy === fechaHoy) {
-        console.log(`✅ Turno de hoy: ${userData.turno_hoy}`);
-        
-        // Validar ventana horaria
-        if (!validarVentanaTurno(userData.turno_hoy, horaActual)) {
-            alert(`No estás en el horario de tu turno programado.\n\nTurno: ${TURNOS_ATTF[userData.turno_hoy].nombre}\n\nContacta al administrador si necesitas corregir tu turno.`);
-            logout();
-            return;
-        }
-        
-        // Verificar contador para determinar acción
-        const contadorTurnos = parseInt(userData.contador_turnos) || 0;
-        
-        if (contadorTurnos >= 5) {
-            // Día 5: Forzar descanso automático
-            console.log('📅 Día 5: Descanso automático obligatorio');
-            mostrarForzarDescansoATTF();
-            return;
-        } else {
-            // 🎯 CAMBIO: Días 1-4: Sin opción descanso (solo turnos)
-            console.log(`📊 Día ${contadorTurnos + 1}: Programar turno correlativo`);
-            mostrarProgramarTurnoManana(false); // Sin opción descanso
-            return;
-        }
+    
+if (userData.turno_hoy && userData.fecha_turno_hoy === fechaHoy) {
+    console.log(`✅ Turno de hoy: ${userData.turno_hoy}`);
+    
+    // Validar ventana horaria
+    if (!validarVentanaTurno(userData.turno_hoy, horaActual)) {
+        alert(`No estás en el horario de tu turno programado...`);
+        logout();
+        return;
     }
+    
+    // Verificar contador para determinar acción
+    const contadorTurnos = parseInt(userData.contador_turnos) || 0;
+    
+    if (contadorTurnos >= 5) {
+        // Día 5: Forzar descanso automático
+        console.log('📅 Día 5: Descanso automático obligatorio');
+        mostrarForzarDescansoATTF();
+        return;
+    } else {
+        // Programar turno mañana + verificar descanso programado
+        console.log(`📊 Día ${contadorTurnos + 1}: Programar turno mañana`);
+        mostrarProgramarTurnoMañanaConDescanso(userData);
+        return;
+    }
+}
     
     // 4. Si llegó aquí, necesita configuración
     console.log('⚠️ Sin turno programado, requiere configuración');
@@ -1534,6 +1541,102 @@ async function confirmarTurnoMananaATTF() {
         accederMenuATTF();
     }
 }
+
+	// ========================================
+// 🔄 PROGRAMAR TURNO MAÑANA + VALIDAR DESCANSO
+// ========================================
+function mostrarProgramarTurnoMañanaConDescanso(userData) {
+    const turnoHoyKey = userData.turno_hoy;
+    const contadorActual = parseInt(userData.contador_turnos) || 0;
+    
+    // Calcular próximo descanso automático (días 6-7 del ciclo)
+    const ahora = new Date();
+    const diasHastaDescanso = 5 - contadorActual;
+    
+    const fechaDescansoInicio = new Date(ahora);
+    fechaDescansoInicio.setDate(fechaDescansoInicio.getDate() + diasHastaDescanso);
+    const fechaDescansoInicioStr = fechaDescansoInicio.toISOString().split('T')[0];
+    
+    const fechaDescansoFin = new Date(fechaDescansoInicio);
+    fechaDescansoFin.setDate(fechaDescansoFin.getDate() + 1);
+    const fechaDescansoFinStr = fechaDescansoFin.toISOString().split('T')[0];
+    
+    // Obtener turnos disponibles (bloqueando consecutivos)
+    const turnosConsecutivos = getTurnoConsecutivo(turnoHoyKey);
+    let opcionesHTML = '';
+    
+    Object.entries(TURNOS_ATTF).forEach(([key, turno]) => {
+        if (turnosConsecutivos.includes(key)) {
+            opcionesHTML += `<option value="${key}" disabled style="background: #ffdddd; color: #999;">${turno.nombre} (🚫 Turno Consecutivo)</option>`;
+        } else {
+            opcionesHTML += `<option value="${key}">${turno.nombre}</option>`;
+        }
+    });
+    
+    const loginSection = document.getElementById('loginSection');
+    loginSection.innerHTML = `
+        <img src="https://cdnimg.bnamericas.com/HFvkiBpeoLTFyPBTjytdbdohtBDrWQsnxgYaUwIlxAEFZVYKsYrwygPFBPYYlShO.png" alt="Logo CLESA" class="logo">
+        <h1 class="titulo-degradado">CLESA</h1>
+        <p class="subtitulo">Programar Turno de Mañana</p>
+        
+        <div style="background: #e3f2fd; padding: 15px; border-radius: 10px; margin-bottom: 20px; border-left: 4px solid #2196f3;">
+            <strong>📊 Día ${contadorActual + 1} de 5</strong>
+        </div>
+        
+        <div class="form-group">
+            <label>Turno de MAÑANA:</label>
+            <select id="turnoManana" class="form-control">
+                <option value="">-- Seleccione --</option>
+                ${opcionesHTML}
+            </select>
+        </div>
+        
+        <button class="btn" onclick="validarDescansoATTF('${fechaDescansoInicioStr}', '${fechaDescansoFinStr}')">
+            ✅ Continuar
+        </button>
+    `;
+}
+
+
+	// ========================================
+// ⚠️ VALIDAR DESCANSO PROGRAMADO
+// ========================================
+function validarDescansoATTF(fechaInicioAuto, fechaFinAuto) {
+    const turnoManana = document.getElementById('turnoManana').value;
+    
+    if (!turnoManana) {
+        alert('Por favor seleccione el turno de mañana');
+        return;
+    }
+    
+    // Guardar turno de mañana temporalmente
+    window.turnoMañanaSeleccionado = turnoManana;
+    
+    const loginSection = document.getElementById('loginSection');
+    loginSection.innerHTML = `
+        <img src="https://cdnimg.bnamericas.com/HFvkiBpeoLTFyPBTjytdbdohtBDrWQsnxgYaUwIlxAEFZVYKsYrwygPFBPYYlShO.png" alt="Logo CLESA" class="logo">
+        <h1 class="titulo-degradado">CLESA</h1>
+        <p class="subtitulo">Confirmación de Descanso</p>
+        
+        <div style="background: #fff3cd; padding: 20px; border-radius: 10px; margin-bottom: 20px; border-left: 4px solid #ffc107;">
+            <strong style="font-size: 18px;">⚠️ Tus próximos días de descanso serán:</strong><br><br>
+            <div style="font-size: 20px; font-weight: 600; color: #2d3748;">
+                📅 ${fechaInicioAuto}<br>
+                📅 ${fechaFinAuto}
+            </div>
+        </div>
+        
+        <div class="action-buttons" style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+            <button class="btn" onclick="confirmarDescansoAutomaticoATTF('${fechaInicioAuto}', '${fechaFinAuto}')" style="background: linear-gradient(135deg, #4caf50 0%, #2e7d32 100%);">
+                ✅ Aceptar
+            </button>
+            <button class="btn btn-secondary" onclick="cambiarFechasDescansoATTF()">
+                🔄 Cambiar Fechas
+            </button>
+        </div>
+    `;
+}
+
 
 
 function accederMenuATTF() {
@@ -2173,8 +2276,48 @@ async function incrementarContadorBusquedas() {
     resultFields: [],
     actions: [],
     esKMLRuta: true
+},
+    'detalle_os': {
+    title: 'Detalle OS',
+    icon: '📊',
+    fields: [],
+    resultFields: [],
+    actions: [],
+    esDetalleOS: true,
+    rolesPermitidos: ['Administrador', 'Supervisor']
 }
 };
+
+	async function fetchAllFromTable(tableName, columns = '*') {
+    const batchSize = 1000;
+    let allData = [];
+    let offset = 0;
+    let hasMore = true;
+
+    while (hasMore) {
+        const { data, error, count } = await supabaseClient
+            .from(tableName)
+            .select(columns, { count: offset === 0 ? 'exact' : undefined })
+            .range(offset, offset + batchSize - 1);
+
+        if (error) {
+            console.error('Error en fetchAllFromTable:', error);
+            throw error;
+        }
+
+        if (data && data.length > 0) {
+            allData = allData.concat(data);
+            console.log(`✅ Cargadas ${allData.length} de ${count || '?'} filas...`);
+            offset += batchSize;
+            hasMore = data.length === batchSize;
+        } else {
+            hasMore = false;
+        }
+    }
+
+    return { data: allData, count: allData.length };
+}
+
 
     // ✅ Variables para las gráficas
     let consumosChart = null;
@@ -2562,21 +2705,35 @@ async function logout() {
     
     // 🆕 Caso especial para gestión de usuarios
     if (selectedTable === 'usuarios') {
-        searchGrid.innerHTML = `
-            <div class="form-group">
+    searchGrid.innerHTML = `
+        <div style="display: grid; grid-template-columns: 1fr auto; gap: 15px; align-items: end;">
+            <div class="form-group" style="margin: 0;">
                 <label>Buscar Usuario:</label>
                 <input type="text" id="searchusuario" placeholder="Ingrese nombre de usuario" />
-                <button class="btn btn-secondary" onclick="buscarUsuarioAdmin()">🔍 Buscar</button>
             </div>
-        `;
-        return;
-    }
+            <button class="btn btn-secondary" onclick="buscarUsuarioAdmin()" style="margin: 0;">🔍 Buscar</button>
+        </div>
+        
+        <div style="text-align: center; margin-top: 20px;">
+            <button class="btn" onclick="mostrarFormularioNuevoUsuario()" style="background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%); width: auto; padding: 15px 30px;">
+                ➕ Crear Nuevo Usuario
+            </button>
+        </div>
+    `;
+    return;
+}
     
     // 🆕 Caso especial para KML Ruta
     if (selectedTable === 'kml_ruta') {
         cargarInterfazKMLRuta();
         return;
     }
+
+    // 🆕 Caso especial para Detalle OS
+if (selectedTable === 'detalle_os') {
+    cargarInterfazDetalleOS();
+    return;
+}
     
     // Caso normal para otras tablas
     let html = '';
@@ -2667,7 +2824,7 @@ function mostrarResultadosUsuarios(usuarios) {
                 <div class="result-item"><strong>Usuario:</strong> ${user.usuario}</div>
                 <div class="result-item"><strong>Rol:</strong> ${user.rol}</div>
                 <div class="result-item"><strong>Activo:</strong> ${user.activo ? '✅ Sí' : '❌ No'}</div>
-                <div class="result-item"><strong>Bloqueado:</strong> ${user.bloqueado ? '🚫 Sí' : '✅ No'}</div>
+                <div class="result-item"><strong>Bloqueado:</strong> ${user.razon_bloqueo ? '🚫 Sí' : '✅ No'}</div>
                 <div class="action-buttons">
                     <button class="btn btn-secondary" onclick="editarUsuario(${user.id})">✏️ Editar</button>
                 </div>
@@ -3097,6 +3254,151 @@ async function resetearUsuario(userId) {
     }
 }
 
+	// ========================================
+// ➕ MOSTRAR FORMULARIO NUEVO USUARIO
+// ========================================
+function mostrarFormularioNuevoUsuario() {
+    const resultsContainer = document.getElementById('searchResults');
+    
+    resultsContainer.innerHTML = `
+        <div class="result-card" style="background: #f0fff4; border: 2px solid #4caf50;">
+            <div class="result-header">➕ Crear Nuevo Usuario</div>
+            
+            <div style="max-width: 500px; margin: 0 auto;">
+                
+                <div class="form-group">
+                    <label>👤 Nombre de Usuario:</label>
+                    <input type="text" id="nuevo_usuario" placeholder="Ej: CLOPCPAC001" 
+                           style="width: 100%; padding: 12px; border-radius: 8px; border: 2px solid #e1e5e9; font-size: 16px;">
+                    <small style="color: #666; display: block; margin-top: 5px;">Sin espacios, solo letras y números</small>
+                </div>
+                
+                <div class="form-group">
+                    <label>🔑 Contraseña:</label>
+                    <input type="password" id="nuevo_password" placeholder="Ingrese contraseña" 
+                           style="width: 100%; padding: 12px; border-radius: 8px; border: 2px solid #e1e5e9; font-size: 16px;">
+                </div>
+                
+                <div class="form-group">
+                    <label>🔑 Confirmar Contraseña:</label>
+                    <input type="password" id="nuevo_password_confirm" placeholder="Confirme contraseña" 
+                           style="width: 100%; padding: 12px; border-radius: 8px; border: 2px solid #e1e5e9; font-size: 16px;">
+                </div>
+                
+                <div class="form-group">
+                    <label>🎭 Rol:</label>
+                    <select id="nuevo_rol" style="width: 100%; padding: 12px; border-radius: 8px; border: 2px solid #e1e5e9; font-size: 16px;">
+                        <option value="">-- Seleccione un rol --</option>
+                        <option value="Administrador">Administrador</option>
+                        <option value="Supervisor">Supervisor</option>
+                        <option value="Consulta">Consulta</option>
+                        <option value="Lectura">Lectura</option>
+                        <option value="Contratista">Contratista</option>
+                        <option value="ATTF">ATTF</option>
+                        <option value="Poda">Poda</option>
+                    </select>
+                </div>
+                
+                <div class="action-buttons" style="margin-top: 25px;">
+                    <button class="btn btn-secondary" onclick="guardarNuevoUsuario()" style="background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);">
+                        💾 Guardar Usuario
+                    </button>
+                    <button class="btn btn-danger" onclick="document.getElementById('searchResults').innerHTML = ''">
+                        ✕ Cancelar
+                    </button>
+                </div>
+                
+            </div>
+        </div>
+    `;
+}
+
+	// ========================================
+// 💾 GUARDAR NUEVO USUARIO
+// ========================================
+async function guardarNuevoUsuario() {
+    const usuario = document.getElementById('nuevo_usuario').value.trim();
+    const password = document.getElementById('nuevo_password').value.trim();
+    const passwordConfirm = document.getElementById('nuevo_password_confirm').value.trim();
+    const rol = document.getElementById('nuevo_rol').value;
+    
+    // Validaciones
+    if (!usuario || !password || !passwordConfirm || !rol) {
+        alert('⚠️ Por favor complete todos los campos');
+        return;
+    }
+    
+    if (usuario.length < 4) {
+        alert('⚠️ El usuario debe tener al menos 4 caracteres');
+        return;
+    }
+    
+    if (password !== passwordConfirm) {
+        alert('⚠️ Las contraseñas no coinciden');
+        return;
+    }
+    
+    if (password.length < 6) {
+        alert('⚠️ La contraseña debe tener al menos 6 caracteres');
+        return;
+    }
+    
+    // Verificar si el usuario ya existe
+    const { data: existente } = await supabaseClient
+        .from('usuarios')
+        .select('usuario')
+        .eq('usuario', usuario)
+        .single();
+    
+    if (existente) {
+        alert('❌ El usuario "' + usuario + '" ya existe');
+        return;
+    }
+    
+    // Confirmación
+    const confirmar = confirm(
+        `¿Crear nuevo usuario?\n\n` +
+        `Usuario: ${usuario}\n` +
+        `Rol: ${rol}\n\n` +
+        `✅ SÍ - Crear usuario\n` +
+        `❌ NO - Cancelar`
+    );
+    
+    if (!confirmar) return;
+    
+    // Crear usuario
+    const { error } = await supabaseClient
+        .from('usuarios')
+        .insert({
+            usuario: usuario,
+            password: password,
+            rol: rol,
+            activo: true,
+            Contador: 0,
+            sessionactiva: false,
+            ultima_actividad: new Date().toISOString()
+        });
+    
+    if (error) {
+        alert('❌ Error al crear usuario: ' + error.message);
+        return;
+    }
+    
+    // Éxito
+    alert('✅ Usuario creado exitosamente\n\nUsuario: ' + usuario + '\nRol: ' + rol);
+    
+    document.getElementById('searchResults').innerHTML = `
+        <div class="result-card" style="background: #e8f5e9; border: 2px solid #4caf50;">
+            <div class="result-header">✅ Usuario Creado</div>
+            <div style="padding: 20px; text-align: center;">
+                <p style="font-size: 18px; color: #2e7d32; margin: 0 0 10px 0;">
+                    <strong>Usuario "${usuario}" creado correctamente</strong>
+                </p>
+                <p style="color: #666; margin: 0;">Rol asignado: <strong>${rol}</strong></p>
+            </div>
+        </div>
+    `;
+}
 
 
    // ===================================================================
@@ -3157,21 +3459,49 @@ function transformarUsuarioAUnidad(usuario) {
 }
 
 
+	async function fetchAllFromTable(tableName, columns = '*') {
+    const batchSize = 1000;
+    let allData = [];
+    let offset = 0;
+    let hasMore = true;
+
+    while (hasMore) {
+        const { data, error, count } = await supabaseClient
+            .from(tableName)
+            .select(columns, { count: offset === 0 ? 'exact' : undefined })
+            .range(offset, offset + batchSize - 1);
+
+        if (error) {
+            console.error('Error en fetchAllFromTable:', error);
+            throw error;
+        }
+
+        if (data && data.length > 0) {
+            allData = allData.concat(data);
+            console.log(`✅ Cargadas ${allData.length} de ${count || '?'} filas...`);
+            offset += batchSize;
+            hasMore = data.length === batchSize; // Si trajo menos de 1000, es la última página
+        } else {
+            hasMore = false;
+        }
+    }
+
+    return { data: allData, count: allData.length };
+}
+
+
+
 	// ========================================
 // 📍 CARGAR INTERFAZ KML RUTA
 // ========================================
 async function cargarInterfazKMLRuta() {
     const searchGrid = document.getElementById('searchGrid');
     
-    // Mostrar indicador de carga
     searchGrid.innerHTML = '<div class="loading" style="display: block; margin: 20px auto;"></div>';
     
     try {
-        // Obtener lista de unidades únicas de OS Pendientes
-        const { data: unidades, error } = await supabaseClient
-            .from('OS Pendientes')
-            .select('Unidad')
-            .not('Unidad', 'is', null);
+        // ✅ CORRECCIÓN
+        const { data: unidades, error } = await fetchAllFromTable('OS Pendientes', 'Unidad');
         
         if (error) {
             searchGrid.innerHTML = '<div class="result-card">❌ Error al cargar unidades</div>';
@@ -3361,6 +3691,1628 @@ function descargarKMLGIS() {
     URL.revokeObjectURL(url);
 }
 
+	// ========================================
+// 📊 CARGAR INTERFAZ DETALLE OS
+// ========================================
+async function cargarInterfazDetalleOS() {
+    // ✅ Cargar festivos primero
+    await cargarFestivos();
+    
+    const searchGrid = document.getElementById('searchGrid');
+    // ... resto del código
+    const resultsContainer = document.getElementById('searchResults');
+    searchGrid.innerHTML = `
+        <div style="background: #e3f2fd; padding: 20px; border-radius: 12px; text-align: center; border-left: 4px solid #2196f3;">
+            <h3 style="margin: 0 0 10px 0; color: #1565c0;">📊 Análisis de OS Pendientes</h3>
+            <p style="margin: 0; color: #666;">Cargando datos de todas las unidades...</p>
+            <div class="loading" style="display: block; margin: 20px auto;"></div>
+        </div>
+    `;
+    resultsContainer.innerHTML = '';
+    try {
+        // ✅ USAR SOLO ESTO:
+        const { data: osPendientes, count } = await fetchAllFromTable(
+            'OS Pendientes',
+            'OSATMO, Unidad, Tipo_de_OS, "Fecha Gen.", Dias_por_OS, Tipologia, Medidor, Estado_ATOMO, Estado_SAP, Comentario, Unicom, Direccion'
+        );
+
+        console.log(`✅ Total cargado: ${osPendientes.length} de ${count} registros`);
+
+        if (!osPendientes || osPendientes.length === 0) {
+            searchGrid.innerHTML = '<div class="result-card">⚠️ No hay OS Pendientes registradas</div>';
+            return;
+        }
+        
+        // Procesar y agrupar datos
+        const datosAgrupados = procesarOSPendientes(osPendientes);
+        
+        // Contar totales
+        const totalReguladas = Object.values(datosAgrupados.reguladas)
+            .reduce((sum, unidad) => {
+                return sum + Object.values(unidad.porRango).flat().length;
+            }, 0);
+        
+        const totalNoReguladas = Object.values(datosAgrupados.noReguladas)
+            .reduce((sum, unidad) => {
+                return sum + Object.values(unidad.porRango).flat().length;
+            }, 0);
+        
+        // Obtener lista de unidades únicas
+const unidadesUnicas = [...new Set(osPendientes.map(os => os.Unidad))].filter(u => u).sort();
+
+// Mostrar resumen con filtro
+searchGrid.innerHTML = `
+    <div class="result-card" style="background: #f0f9ff; border: 2px solid #3b82f6;">
+        <div class="result-header">✅ Análisis completado</div>
+        
+        <div style="background: white; padding: 15px; border-radius: 8px; margin: 15px 0;">
+            <strong>📊 Resumen General:</strong><br>
+            • Total de OS: <strong>${osPendientes.length}</strong><br>
+            • OS Reguladas: <strong>${totalReguladas}</strong><br>
+            • OS No Reguladas: <strong>${totalNoReguladas}</strong><br>
+            • Unidades analizadas: <strong>${unidadesUnicas.length}</strong>
+        </div>
+        
+        <div style="background: #fff3cd; padding: 20px; border-radius: 10px; margin-top: 20px; border-left: 4px solid #ffc107;">
+            <strong style="font-size: 16px; color: #2d3748;">🔍 Filtrar por Unidad</strong>
+            
+            <div style="display: grid; grid-template-columns: 1fr auto; gap: 15px; align-items: end; margin-top: 15px;">
+                <div>
+                    <label style="display: block; margin-bottom: 8px; font-weight: 600; color: #4a5568;">
+                        Buscar Unidad:
+                    </label>
+                    <input 
+                        type="text" 
+                        id="filtroUnidad" 
+                        list="listaUnidades"
+                        placeholder="Escribe para buscar... (ej: CL-OPC-001)"
+                        style="width: 100%; padding: 12px; border-radius: 8px; border: 2px solid #e1e5e9; font-size: 16px;"
+                    >
+                    <datalist id="listaUnidades">
+                        ${unidadesUnicas.map(u => `<option value="${u}">`).join('')}
+                    </datalist>
+                    <small style="color: #666; display: block; margin-top: 5px;">
+                        ${unidadesUnicas.length} unidades disponibles
+                    </small>
+                </div>
+                
+                <button class="btn btn-secondary" onclick="aplicarFiltroUnidad()" style="margin: 0;">
+                    🔍 Aplicar Filtro
+                </button>
+            </div>
+            
+            <div style="text-align: center; margin-top: 15px;">
+                <button class="btn" onclick="limpiarFiltroUnidad()" style="background: linear-gradient(135deg, #ff6b6b 0%, #ee5a6f 100%); width: auto; padding: 10px 20px;">
+                    🗑️ Limpiar Filtro
+                </button>
+            </div>
+        </div>
+    </div>
+`;
+        
+        // Guardar datos procesados globalmente
+        window.datosDetalleOS = datosAgrupados;
+	// Guardar datos originales para filtros
+window.datosDetalleOS_Original = JSON.parse(JSON.stringify(datosAgrupados));
+window.osPendientes_Original = osPendientes;
+        
+        console.log('✅ Datos procesados:', datosAgrupados);
+        console.log('📊 Reguladas:', totalReguladas, '| No Reguladas:', totalNoReguladas);
+        
+        // Generar y mostrar las 4 tablas
+        resultsContainer.innerHTML = `
+            <div class="result-card" style="background: white; padding: 30px;">
+                
+                <h2 style="color: #26c6da; margin: 0 0 20px 0; font-size: 22px; border-bottom: 3px solid #26c6da; padding-bottom: 10px;">
+    📡 UNICOM - Por Condición
+</h2>
+${generarTablaUnicomPorCondicion(osPendientes)}
+
+<h2 style="color: #00acc1; margin: 40px 0 20px 0; font-size: 22px; border-bottom: 3px solid #00acc1; padding-bottom: 10px;">
+    📡 UNICOM - Por Rango de Días
+</h2>
+${generarTablaUnicomPorRango(osPendientes)}
+
+<h2 style="color: #f44336; margin: 40px 0 20px 0; font-size: 22px; border-bottom: 3px solid #f44336; padding-bottom: 10px;">
+    🚫 TABLA 4: OS Bloqueadas por Rango de Días
+</h2>
+${generarTablaBloqueados(datosAgrupados)}
+
+<h2 style="color: #0097a7; margin: 40px 0 20px 0; font-size: 22px; border-bottom: 3px solid #0097a7; padding-bottom: 10px;">
+    🔄 TABLA 3: Estado SAP vs Estado ATOMO
+</h2>
+${generarTablaEstadoSapVsAtomo(datosAgrupados)}
+
+<h2 style="color: #00bcd4; margin: 40px 0 20px 0; font-size: 22px; border-bottom: 3px solid #00bcd4; padding-bottom: 10px;">
+    📊 TABLA 2: Estado ATOMO vs Rangos de Días
+</h2>
+${generarTablaEstadoAtomoPorRango(datosAgrupados)}
+
+<h2 style="color: #f093fb; margin: 40px 0 20px 0; font-size: 22px; border-bottom: 3px solid #f093fb; padding-bottom: 10px;">
+    ⚠️ REGULADAS - Por Condición
+</h2>
+${generarTablaPorCondicion(datosAgrupados.reguladas, 'reguladas')}
+
+<h2 style="color: #667eea; margin: 40px 0 20px 0; font-size: 22px; border-bottom: 3px solid #667eea; padding-bottom: 10px;">
+    📊 REGULADAS - Por Rango de Días
+</h2>
+${generarTablaPorRango(datosAgrupados.reguladas, 'reguladas')}
+
+<h2 style="color: #f5576c; margin: 40px 0 20px 0; font-size: 22px; border-bottom: 3px solid #f5576c; padding-bottom: 10px;">
+    ⚠️ NO REGULADAS - Por Condición
+</h2>
+${generarTablaPorCondicion(datosAgrupados.noReguladas, 'noReguladas')}
+
+<h2 style="color: #764ba2; margin: 40px 0 20px 0; font-size: 22px; border-bottom: 3px solid #764ba2; padding-bottom: 10px;">
+    📊 NO REGULADAS - Por Rango de Días
+</h2>
+${generarTablaPorRango(datosAgrupados.noReguladas, 'noReguladas')}
+
+</div>
+`;
+        
+    } catch (err) {
+        console.error('Error cargando Detalle OS:', err);
+        searchGrid.innerHTML = '<div class="result-card">❌ Error de conexión</div>';
+    }
+}
+
+
+	// ========================================
+// 🔍 APLICAR FILTRO POR UNIDAD
+// ========================================
+function aplicarFiltroUnidad() {
+    const unidadSeleccionada = document.getElementById('filtroUnidad').value.trim();
+    
+    if (!unidadSeleccionada) {
+        alert('Por favor ingrese o seleccione una unidad');
+        return;
+    }
+    
+    // Validar que la unidad exista
+    const unidadesDisponibles = [...new Set(window.osPendientes_Original.map(os => os.Unidad))];
+    if (!unidadesDisponibles.includes(unidadSeleccionada)) {
+        alert(`La unidad "${unidadSeleccionada}" no existe en los datos`);
+        return;
+    }
+    
+    console.log(`🔍 Filtrando por unidad: ${unidadSeleccionada}`);
+    
+    // Filtrar datos por unidad
+    const datosFiltrados = {
+        reguladas: {},
+        noReguladas: {}
+    };
+    
+    // Copiar solo la unidad seleccionada
+    ['reguladas', 'noReguladas'].forEach(tipo => {
+        if (window.datosDetalleOS_Original[tipo][unidadSeleccionada]) {
+            datosFiltrados[tipo][unidadSeleccionada] = window.datosDetalleOS_Original[tipo][unidadSeleccionada];
+        }
+    });
+    
+    // Filtrar OS Pendientes
+    const osFiltradas = window.osPendientes_Original.filter(os => os.Unidad === unidadSeleccionada);
+    
+    if (osFiltradas.length === 0) {
+        alert(`No se encontraron OS para la unidad: ${unidadSeleccionada}`);
+        return;
+    }
+    
+    // Actualizar datos globales
+    window.datosDetalleOS = datosFiltrados;
+    
+    // Regenerar tablas
+    regenerarTablasFiltradas(datosFiltrados, osFiltradas, unidadSeleccionada);
+}
+
+
+	// ========================================
+// 🔄 REGENERAR TABLAS CON FILTRO
+// ========================================
+function regenerarTablasFiltradas(datosFiltrados, osFiltradas, unidad) {
+    const resultsContainer = document.getElementById('searchResults');
+    
+    let html = `
+        <div class="result-card" style="background: #e8f5e9; border: 2px solid #4caf50;">
+            <div class="result-header">✅ Filtro aplicado: ${unidad}</div>
+            <div style="background: white; padding: 15px; border-radius: 8px; margin: 15px 0;">
+                <strong>📊 Resultados:</strong><br>
+                • Total de OS de esta unidad: <strong>${osFiltradas.length}</strong>
+            </div>
+        </div>
+        
+        <div class="result-card" style="background: white; padding: 30px;">
+    `;
+    
+    // Verificar si hay datos en cada tabla antes de mostrarla
+    
+    // UNICOM por Condición
+    const unicomCondicion = osFiltradas.filter(os => os.Unicom);
+    if (unicomCondicion.length > 0) {
+        html += `
+            <h2 style="color: #26c6da; margin: 0 0 20px 0; font-size: 22px; border-bottom: 3px solid #26c6da; padding-bottom: 10px;">
+                📡 UNICOM - Por Condición
+            </h2>
+            ${generarTablaUnicomPorCondicion(unicomCondicion)}`;
+    }
+    
+    // UNICOM por Rango
+    if (unicomCondicion.length > 0) {
+        html += `
+            <h2 style="color: #00acc1; margin: 40px 0 20px 0; font-size: 22px; border-bottom: 3px solid #00acc1; padding-bottom: 10px;">
+                📡 UNICOM - Por Rango de Días
+            </h2>
+            ${generarTablaUnicomPorRango(unicomCondicion)}`;
+    }
+    
+    // Reguladas por Condición
+    if (Object.keys(datosFiltrados.reguladas).length > 0) {
+        html += `
+            <h2 style="color: #f093fb; margin: 40px 0 20px 0; font-size: 22px; border-bottom: 3px solid #f093fb; padding-bottom: 10px;">
+                ⚠️ REGULADAS - Por Condición
+            </h2>
+            ${generarTablaPorCondicion(datosFiltrados.reguladas, 'reguladas')}`;
+    }
+    
+    // Reguladas por Rango
+    if (Object.keys(datosFiltrados.reguladas).length > 0) {
+        html += `
+            <h2 style="color: #667eea; margin: 40px 0 20px 0; font-size: 22px; border-bottom: 3px solid #667eea; padding-bottom: 10px;">
+                📊 REGULADAS - Por Rango de Días
+            </h2>
+            ${generarTablaPorRango(datosFiltrados.reguladas, 'reguladas')}`;
+    }
+    
+    // No Reguladas por Condición
+    if (Object.keys(datosFiltrados.noReguladas).length > 0) {
+        html += `
+            <h2 style="color: #f5576c; margin: 40px 0 20px 0; font-size: 22px; border-bottom: 3px solid #f5576c; padding-bottom: 10px;">
+                ⚠️ NO REGULADAS - Por Condición
+            </h2>
+            ${generarTablaPorCondicion(datosFiltrados.noReguladas, 'noReguladas')}`;
+    }
+    
+    // No Reguladas por Rango
+    if (Object.keys(datosFiltrados.noReguladas).length > 0) {
+        html += `
+            <h2 style="color: #764ba2; margin: 40px 0 20px 0; font-size: 22px; border-bottom: 3px solid #764ba2; padding-bottom: 10px;">
+                📊 NO REGULADAS - Por Rango de Días
+            </h2>
+            ${generarTablaPorRango(datosFiltrados.noReguladas, 'noReguladas')}`;
+    }
+    
+    // Estado ATOMO vs Rangos (se regenera con datos filtrados)
+    html += `
+        <h2 style="color: #00bcd4; margin: 40px 0 20px 0; font-size: 22px; border-bottom: 3px solid #00bcd4; padding-bottom: 10px;">
+            📊 TABLA 2: Estado ATOMO vs Rangos de Días
+        </h2>
+        ${generarTablaEstadoAtomoPorRango(datosFiltrados)}`;
+    
+    // Estado SAP vs ATOMO
+    html += `
+        <h2 style="color: #0097a7; margin: 40px 0 20px 0; font-size: 22px; border-bottom: 3px solid #0097a7; padding-bottom: 10px;">
+            🔄 TABLA 3: Estado SAP vs Estado ATOMO
+        </h2>
+        ${generarTablaEstadoSapVsAtomo(datosFiltrados)}`;
+    
+    // OS Bloqueadas
+    html += `
+        <h2 style="color: #f44336; margin: 40px 0 20px 0; font-size: 22px; border-bottom: 3px solid #f44336; padding-bottom: 10px;">
+            🚫 TABLA 4: OS Bloqueadas por Rango de Días
+        </h2>
+        ${generarTablaBloqueados(datosFiltrados)}`;
+    
+    html += `</div>`;
+    
+    resultsContainer.innerHTML = html;
+    
+    console.log(`✅ Tablas regeneradas para unidad: ${unidad}`);
+}
+
+
+	// ========================================
+// 🗑️ LIMPIAR FILTRO Y RESTAURAR TODAS LAS TABLAS
+// ========================================
+function limpiarFiltroUnidad() {
+    console.log('🗑️ Limpiando filtro...');
+    
+    // Limpiar input
+    document.getElementById('filtroUnidad').value = '';
+    
+    // Restaurar datos originales
+    window.datosDetalleOS = JSON.parse(JSON.stringify(window.datosDetalleOS_Original));
+    
+    const osPendientes = window.osPendientes_Original;
+    const datosAgrupados = window.datosDetalleOS;
+    
+    // Recalcular totales
+    const totalReguladas = Object.values(datosAgrupados.reguladas)
+        .reduce((sum, unidad) => {
+            return sum + Object.values(unidad.porRango).flat().length;
+        }, 0);
+    
+    const totalNoReguladas = Object.values(datosAgrupados.noReguladas)
+        .reduce((sum, unidad) => {
+            return sum + Object.values(unidad.porRango).flat().length;
+        }, 0);
+    
+    // Regenerar todas las tablas
+    const resultsContainer = document.getElementById('searchResults');
+    
+    resultsContainer.innerHTML = `
+        <div class="result-card" style="background: white; padding: 30px;">
+            
+            <h2 style="color: #26c6da; margin: 0 0 20px 0; font-size: 22px; border-bottom: 3px solid #26c6da; padding-bottom: 10px;">
+                📡 UNICOM - Por Condición
+            </h2>
+            ${generarTablaUnicomPorCondicion(osPendientes)}
+            
+            <h2 style="color: #00acc1; margin: 40px 0 20px 0; font-size: 22px; border-bottom: 3px solid #00acc1; padding-bottom: 10px;">
+                📡 UNICOM - Por Rango de Días
+            </h2>
+            ${generarTablaUnicomPorRango(osPendientes)}
+            
+            <h2 style="color: #f44336; margin: 40px 0 20px 0; font-size: 22px; border-bottom: 3px solid #f44336; padding-bottom: 10px;">
+                🚫 TABLA 4: OS Bloqueadas por Rango de Días
+            </h2>
+            ${generarTablaBloqueados(datosAgrupados)}
+            
+            <h2 style="color: #0097a7; margin: 40px 0 20px 0; font-size: 22px; border-bottom: 3px solid #0097a7; padding-bottom: 10px;">
+                🔄 TABLA 3: Estado SAP vs Estado ATOMO
+            </h2>
+            ${generarTablaEstadoSapVsAtomo(datosAgrupados)}
+            
+            <h2 style="color: #00bcd4; margin: 40px 0 20px 0; font-size: 22px; border-bottom: 3px solid #00bcd4; padding-bottom: 10px;">
+                📊 TABLA 2: Estado ATOMO vs Rangos de Días
+            </h2>
+            ${generarTablaEstadoAtomoPorRango(datosAgrupados)}
+            
+            <h2 style="color: #f093fb; margin: 40px 0 20px 0; font-size: 22px; border-bottom: 3px solid #f093fb; padding-bottom: 10px;">
+                ⚠️ REGULADAS - Por Condición
+            </h2>
+            ${generarTablaPorCondicion(datosAgrupados.reguladas, 'reguladas')}
+            
+            <h2 style="color: #667eea; margin: 40px 0 20px 0; font-size: 22px; border-bottom: 3px solid #667eea; padding-bottom: 10px;">
+                📊 REGULADAS - Por Rango de Días
+            </h2>
+            ${generarTablaPorRango(datosAgrupados.reguladas, 'reguladas')}
+            
+            <h2 style="color: #f5576c; margin: 40px 0 20px 0; font-size: 22px; border-bottom: 3px solid #f5576c; padding-bottom: 10px;">
+                ⚠️ NO REGULADAS - Por Condición
+            </h2>
+            ${generarTablaPorCondicion(datosAgrupados.noReguladas, 'noReguladas')}
+            
+            <h2 style="color: #764ba2; margin: 40px 0 20px 0; font-size: 22px; border-bottom: 3px solid #764ba2; padding-bottom: 10px;">
+                📊 NO REGULADAS - Por Rango de Días
+            </h2>
+            ${generarTablaPorRango(datosAgrupados.noReguladas, 'noReguladas')}
+            
+        </div>
+    `;
+    
+    console.log('✅ Filtro limpiado - Mostrando todas las unidades');
+    alert('✅ Filtro eliminado - Mostrando todas las unidades');
+}
+
+
+
+	// ========================================
+// 📅 CARGAR FESTIVOS DESDE SUPABASE
+// ========================================
+let festivosCache = [];
+
+async function cargarFestivos() {
+    try {
+        const { data, error } = await supabaseClient
+            .from('festivos')
+            .select('fecha')
+            .eq('activo', true);
+        
+        if (!error && data) {
+            festivosCache = data.map(f => f.fecha);
+            console.log('✅ Festivos cargados:', festivosCache);
+        }
+    } catch (err) {
+        console.error('Error cargando festivos:', err);
+    }
+}
+
+// ========================================
+// 📅 CALCULAR DÍAS HÁBILES (EXCLUYE SÁB/DOM/FESTIVOS)
+// ========================================
+function calcularDiasHabiles(fechaGen) {
+    if (!fechaGen) return null;
+    
+    const hoy = new Date();
+    hoy.setHours(0, 0, 0, 0);
+    
+    const fechaInicio = new Date(fechaGen);
+    fechaInicio.setHours(0, 0, 0, 0);
+    
+    let diasHabiles = 0;
+    let fechaActual = new Date(fechaInicio);
+    
+    while (fechaActual <= hoy) {
+        const diaSemana = fechaActual.getDay(); // 0=Domingo, 6=Sábado
+        const fechaStr = fechaActual.toISOString().split('T')[0];
+        
+        // Contar si NO es sábado, NO es domingo, NO es festivo
+        if (diaSemana !== 0 && diaSemana !== 6 && !festivosCache.includes(fechaStr)) {
+            diasHabiles++;
+        }
+        
+        fechaActual.setDate(fechaActual.getDate() + 1);
+    }
+    
+    return diasHabiles;
+}
+	
+
+	// ========================================
+// 📅 CALCULAR DÍAS DESDE GENERACIÓN
+// ========================================
+function calcularDias(fechaGen) {
+    if (!fechaGen) return null;
+    
+    const hoy = new Date();
+    hoy.setHours(0, 0, 0, 0); // Normalizar a medianoche
+    
+    const fechaGeneracion = new Date(fechaGen);
+    fechaGeneracion.setHours(0, 0, 0, 0);
+    
+    // Diferencia en milisegundos
+    const diffMs = hoy - fechaGeneracion;
+    const diffDias = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+    
+    // +1 porque el día de generación cuenta como día 1
+    return diffDias + 1;
+}
+
+	// ========================================
+// 📊 DETERMINAR RANGO POR DÍAS
+// ========================================
+function determinarRango(dias) {
+    if (dias === null || dias === undefined) return 'Sin datos';
+    
+    if (dias <= 5) return '0-5';
+    if (dias <= 10) return '6-10';
+    if (dias <= 15) return '11-15';
+    if (dias <= 20) return '16-20';
+    if (dias <= 30) return '21-30';
+    if (dias <= 45) return '31-45';
+    if (dias <= 180) return '46-180';
+    return '>180';
+}
+
+// ========================================
+// ⚠️ DETERMINAR CONDICIÓN (TEMPORAL - Sin Dias_por_OS)
+// ========================================
+function determinarCondicion(dias, diasPorOS) {
+    if (dias === null || dias === undefined) return 'Sin datos';
+    
+    // Por ahora asumimos 15 días estándar (TEMPORAL)
+    // En PARTE 3 lo haremos dinámico según tipología
+    const plazoEstandar = diasPorOS || 15;
+    
+    const diferencia = plazoEstandar - dias;
+    
+    if (diferencia < 0) return 'VENCIDO';
+    if (diferencia === 0) return 'HOY';
+    if (diferencia === 1) return 'MAÑANA';
+    return 'EN TIEMPO';
+}
+
+
+// ========================================
+// 🗂️ AGRUPAR Y PROCESAR OS PENDIENTES
+// ========================================
+function procesarOSPendientes(osPendientes) {
+    const datosAgrupados = {
+        reguladas: {},
+        noReguladas: {}
+    };
+    
+    osPendientes.forEach(os => {
+    // Determinar tipo primero
+    const valorTipo = os.Tipo_de_OS ? os.Tipo_de_OS.toLowerCase() : '';
+    const esRegulada = (valorTipo.includes('regulad') && !valorTipo.includes('no'));
+    
+    // Calcular días según tipo
+    const dias = esRegulada 
+        ? calcularDiasHabiles(os['Fecha Gen.'])  // ✅ Hábiles para Reguladas
+        : calcularDias(os['Fecha Gen.']);         // ❌ Normales para No Reguladas
+    
+    const rango = determinarRango(dias);
+    const condicion = determinarCondicion(dias, os.Dias_por_OS);
+    
+    const tipo = esRegulada ? 'reguladas' : 'noReguladas';
+        
+       const unidad = os.Unidad || 'Sin Unidad';
+        
+        // Inicializar unidad si no existe
+        if (!datosAgrupados[tipo][unidad]) {
+            datosAgrupados[tipo][unidad] = {
+                porRango: {
+                    '0-5': [],
+                    '6-10': [],
+                    '11-15': [],
+                    '16-20': [],
+                    '21-30': [],
+                    '31-45': [],
+                    '46-180': [],
+                    '>180': [],
+                    'Sin datos': []
+                },
+                porCondicion: {
+                    'HOY': [],
+                    'MAÑANA': [],
+                    'EN TIEMPO': [],
+                    'VENCIDO': [],
+                    'Sin datos': []
+                }
+            };
+        }
+        
+        // Agregar OS a sus categorías
+        const osConDatos = {
+            ...os,
+            dias_calculados: dias,
+            rango: rango,
+            condicion: condicion
+        };
+        
+        // Validar que el rango y condición existan antes de hacer push
+        if (datosAgrupados[tipo][unidad].porRango[rango]) {
+            datosAgrupados[tipo][unidad].porRango[rango].push(osConDatos);
+        } else {
+            console.warn('Rango no reconocido:', rango);
+            datosAgrupados[tipo][unidad].porRango['Sin datos'].push(osConDatos);
+        }
+        
+        if (datosAgrupados[tipo][unidad].porCondicion[condicion]) {
+            datosAgrupados[tipo][unidad].porCondicion[condicion].push(osConDatos);
+        } else {
+            console.warn('Condición no reconocida:', condicion);
+            datosAgrupados[tipo][unidad].porCondicion['Sin datos'].push(osConDatos);
+        }
+    });
+    
+    return datosAgrupados;
+}
+
+
+
+// ========================================
+// 📊 GENERAR TABLA POR RANGO DE DÍAS
+// ========================================
+function generarTablaPorRango(datos, tipoOS) {
+    const unidades = Object.keys(datos).sort();
+    if (unidades.length === 0) {
+        return `<p style="color: #666; text-align: center;">No hay datos de OS ${tipoOS}</p>`;
+    }
+    const rangos = ['0-5', '6-10', '11-15', '16-20', '21-30', '31-45', '46-180', '>180'];
+    // ✅ DEFINIR 'condiciones' aquí, igual que en generarTablaPorCondicion
+    const condiciones = ['HOY', 'MAÑANA', 'EN TIEMPO', 'VENCIDO'];
+
+    let html = `
+        <div style="overflow-x: auto; margin: 20px 0;">
+            <table style="width: 100%; border-collapse: collapse; background: white; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+                <thead>
+    <tr style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); color: white;">
+        <th style="padding: 15px; text-align: left; font-weight: 600; border-right: 1px solid rgba(255,255,255,0.2);">Unidad</th>
+        ${rangos.map(r => `<th style="padding: 15px; text-align: center; font-weight: 600; border-right: 1px solid rgba(255,255,255,0.2);">${r}</th>`).join('')}
+        <th style="padding: 15px; text-align: center; font-weight: 700; background: rgba(0,0,0,0.2);">TOTAL</th>
+    </tr>
+</thead>
+                <tbody>`;
+    unidades.forEach((unidad, idx) => {
+        const bgColor = idx % 2 === 0 ? '#f8f9fa' : 'white';
+        html += `<tr style="background: ${bgColor}; border-bottom: 1px solid #e2e8f0;" id="fila_${tipoOS}_rango_${idx}">`;
+        html += `<td style="padding: 12px; font-weight: 600; color: #2d3748; border-right: 1px solid #e2e8f0;">${unidad}</td>`;
+        rangos.forEach(rango => {
+            const count = datos[unidad].porRango[rango].length;
+            const hasData = count > 0;
+            html += `
+                <td style="padding: 12px; text-align: center; border-right: 1px solid #e2e8f0; cursor: ${hasData ? 'pointer' : 'default'};" 
+                    ${hasData ? `onclick="toggleDetalleRango('${unidad}', '${rango}', '${tipoOS}', ${idx})"` : ''}>
+                    <span style="
+                        display: inline-block;
+                        min-width: 30px;
+                        padding: 6px 12px;
+                        border-radius: 6px;
+                        font-weight: 600;
+                        background: ${hasData ? '#e3f2fd' : '#f5f5f5'};
+                        color: ${hasData ? '#1976d2' : '#999'};
+                        ${hasData ? 'box-shadow: 0 2px 4px rgba(25,118,210,0.2);' : ''}
+                    ">
+                        ${count}
+                    </span>
+                </td>`;
+        });
+        const total = condiciones.reduce((sum, c) => sum + (datos[unidad].porCondicion[c] || []).length, 0);
+        html += `<td style="padding: 12px; text-align: center; font-weight: 700; background: rgba(0,0,0,0.05); font-size: 16px; border-right: 1px solid #e2e8f0;">${total}</td>`;
+        html += `</tr>`;
+        // Fila oculta para el detalle
+        html += `
+            <tr id="detalle_${tipoOS}_rango_${idx}" style="display: none; background: #fff3cd;">
+                <td colspan="${rangos.length + 1}" style="padding: 15px;">
+                    <div id="contenido_detalle_${tipoOS}_rango_${idx}"></div>
+                </td>
+            </tr>`;
+    });
+    html += `</tbody></table></div>`;
+    return html;
+}
+
+	// ========================================
+// ⚠️ GENERAR TABLA POR CONDICIÓN
+// ========================================
+function generarTablaPorCondicion(datos, tipoOS) {
+    const unidades = Object.keys(datos).sort();
+    
+    if (unidades.length === 0) {
+        return `<p style="color: #666; text-align: center;">No hay datos de OS ${tipoOS}</p>`;
+    }
+    
+    const condiciones = ['HOY', 'MAÑANA', 'EN TIEMPO', 'VENCIDO'];
+    const coloresCondicion = {
+        'HOY': '#ef5350',
+        'MAÑANA': '#ffa726',
+        'EN TIEMPO': '#66bb6a',
+        'VENCIDO': '#d32f2f'
+    };
+    
+    let html = `
+        <div style="overflow-x: auto; margin: 20px 0;">
+            <table style="width: 100%; border-collapse: collapse; background: white; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+                <thead>
+    <tr style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); color: white;">
+        <th style="padding: 15px; text-align: left; font-weight: 600; border-right: 1px solid rgba(255,255,255,0.2);">Unidad</th>
+        ${condiciones.map(c => `<th style="padding: 15px; text-align: center; font-weight: 600; border-right: 1px solid rgba(255,255,255,0.2);">${c}</th>`).join('')}
+        <th style="padding: 15px; text-align: center; font-weight: 700; background: rgba(0,0,0,0.2);">TOTAL</th>
+    </tr>
+</thead>
+                <tbody>`;
+    
+    unidades.forEach((unidad, idx) => {
+        const bgColor = idx % 2 === 0 ? '#f8f9fa' : 'white';
+        html += `<tr style="background: ${bgColor}; border-bottom: 1px solid #e2e8f0;" id="fila_${tipoOS}_condicion_${idx}">`;
+        html += `<td style="padding: 12px; font-weight: 600; color: #2d3748; border-right: 1px solid #e2e8f0;">${unidad}</td>`;
+        
+        condiciones.forEach(condicion => {
+            const count = datos[unidad].porCondicion[condicion].length;
+            const hasData = count > 0;
+            const color = coloresCondicion[condicion];
+	
+            
+            html += `
+                <td style="padding: 12px; text-align: center; border-right: 1px solid #e2e8f0; cursor: ${hasData ? 'pointer' : 'default'};" 
+                    ${hasData ? `onclick="toggleDetalleCondicion('${unidad}', '${condicion}', '${tipoOS}', ${idx})"` : ''}>
+                    <span style="
+                        display: inline-block;
+                        min-width: 30px;
+                        padding: 6px 12px;
+                        border-radius: 6px;
+                        font-weight: 600;
+                        background: ${hasData ? color + '20' : '#f5f5f5'};
+                        color: ${hasData ? color : '#999'};
+                        ${hasData ? `box-shadow: 0 2px 4px ${color}40;` : ''}
+                    ">
+                        ${count}
+                    </span>
+                </td>`;
+        });
+        
+        const total = condiciones.reduce((sum, c) => sum + datos[unidad].porCondicion[c].length, 0);
+html += `<td style="padding: 12px; text-align: center; font-weight: 700; background: rgba(0,0,0,0.05); font-size: 16px; border-right: 1px solid #e2e8f0;">${total}</td>`;
+
+html += `</tr>`;
+        
+        // Fila oculta para el detalle
+        html += `
+            <tr id="detalle_${tipoOS}_condicion_${idx}" style="display: none; background: #e8f5e9;">
+                <td colspan="${condiciones.length + 1}" style="padding: 15px;">
+                    <div id="contenido_detalle_${tipoOS}_condicion_${idx}"></div>
+                </td>
+            </tr>`;
+    });
+    
+    html += `</tbody></table></div>`;
+    
+    return html;
+}
+
+	// ========================================
+// 📊 TABLA 2: ESTADO_ATOMO VS RANGOS
+// ========================================
+function generarTablaEstadoAtomoPorRango(datos) {
+    // Obtener todos los estados únicos de AMBOS tipos
+    const estadosSet = new Set();
+    ['reguladas', 'noReguladas'].forEach(tipo => {
+        if (datos[tipo]) {
+            Object.values(datos[tipo]).forEach(unidad => {
+                Object.values(unidad.porRango).forEach(osList => {
+                    osList.forEach(os => {
+                        if (os.Estado_ATOMO) estadosSet.add(os.Estado_ATOMO);
+                    });
+                });
+            });
+        }
+    });
+    
+    const estados = Array.from(estadosSet).sort();
+    const rangos = ['0-5', '6-10', '11-15', '16-20', '21-30', '31-45', '46-180', '>180'];
+    
+    if (estados.length === 0) {
+        return '<p style="color: #666; text-align: center;">No hay datos de Estado_ATOMO</p>';
+    }
+    
+    // Agrupar datos por Estado_ATOMO y Rango
+    const agrupado = {};
+    estados.forEach(estado => {
+        agrupado[estado] = {};
+        rangos.forEach(rango => {
+            agrupado[estado][rango] = [];
+        });
+    });
+    
+    // Llenar con datos de reguladas y no reguladas
+    ['reguladas', 'noReguladas'].forEach(tipo => {
+        if (datos[tipo]) {
+            Object.values(datos[tipo]).forEach(unidad => {
+                Object.entries(unidad.porRango).forEach(([rango, osList]) => {
+                    osList.forEach(os => {
+                        const estado = os.Estado_ATOMO || 'Sin Estado';
+                        if (agrupado[estado] && agrupado[estado][rango]) {
+                            agrupado[estado][rango].push(os);
+                        }
+                    });
+                });
+            });
+        }
+    });
+    
+    let html = `
+        <div style="overflow-x: auto; margin: 20px 0;">
+            <table style="width: 100%; border-collapse: collapse; background: white; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+                <thead>
+                    <tr style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white;">
+                        <th style="padding: 15px; text-align: left; font-weight: 600; border-right: 1px solid rgba(255,255,255,0.2);">Rango Días</th>
+                        ${estados.map(e => `<th style="padding: 15px; text-align: center; font-weight: 600; border-right: 1px solid rgba(255,255,255,0.2);">${e}</th>`).join('')}
+<th style="padding: 15px; text-align: center; font-weight: 700; background: rgba(0,0,0,0.2);">TOTAL</th>
+</tr>
+                </thead>
+                <tbody>`;
+    
+    rangos.forEach((rango, idx) => {
+        const bgColor = idx % 2 === 0 ? '#f8f9fa' : 'white';
+        html += `<tr style="background: ${bgColor}; border-bottom: 1px solid #e2e8f0;" id="fila_estado_rango_${idx}">`;
+        html += `<td style="padding: 12px; font-weight: 600; color: #2d3748; border-right: 1px solid #e2e8f0;">${rango}</td>`;
+        
+        estados.forEach(estado => {
+            const count = agrupado[estado][rango].length;
+            const hasData = count > 0;
+            
+            html += `
+                <td style="padding: 12px; text-align: center; border-right: 1px solid #e2e8f0; cursor: ${hasData ? 'pointer' : 'default'};" 
+                    ${hasData ? `onclick="toggleDetalleEstadoRango('${estado}', '${rango}', ${idx})"` : ''}>
+                    <span style="
+                        display: inline-block;
+                        min-width: 30px;
+                        padding: 6px 12px;
+                        border-radius: 6px;
+                        font-weight: 600;
+                        background: ${hasData ? '#e3f2fd' : '#f5f5f5'};
+                        color: ${hasData ? '#1976d2' : '#999'};
+                        ${hasData ? 'box-shadow: 0 2px 4px rgba(25,118,210,0.2);' : ''}
+                    ">
+                        ${count}
+                    </span>
+                </td>`;
+        });
+        
+        const total = estados.reduce((sum, estado) => sum + agrupado[estado][rango].length, 0);
+html += `<td style="padding: 12px; text-align: center; font-weight: 700; background: rgba(0,0,0,0.05); font-size: 16px;">${total}</td>`;
+
+html += `</tr>`;
+        
+        // Fila oculta para detalle
+        html += `
+            <tr id="detalle_estado_rango_${idx}" style="display: none; background: #fff3cd;">
+                <td colspan="${estados.length + 2}" style="padding: 15px;">
+                    <div id="contenido_detalle_estado_rango_${idx}"></div>
+                </td>
+            </tr>`;
+    });
+    
+    html += `</tbody></table></div>`;
+    
+    // Guardar datos globalmente
+    window.datosEstadoAtomoPorRango = agrupado;
+    
+    return html;
+}
+
+// ========================================
+// 🔽 TOGGLE DETALLE ESTADO_ATOMO POR RANGO
+// ========================================
+function toggleDetalleEstadoRango(estado, rango, idx) {
+    const filaDetalle = document.getElementById(`detalle_estado_rango_${idx}`);
+    const contenidoDetalle = document.getElementById(`contenido_detalle_estado_rango_${idx}`);
+    
+    if (filaDetalle.style.display === 'table-row') {
+        filaDetalle.style.display = 'none';
+        return;
+    }
+    
+    const osList = window.datosEstadoAtomoPorRango[estado][rango];
+    
+    if (!osList || osList.length === 0) {
+        contenidoDetalle.innerHTML = '<p style="color: #666;">No hay OS en este cruce</p>';
+        filaDetalle.style.display = 'table-row';
+        return;
+    }
+    
+    let html = `
+        <div style="background: white; padding: 15px; border-radius: 8px; border-left: 4px solid #667eea;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                <strong style="color: #2d3748; font-size: 16px;">
+                    📋 ${estado} - Rango ${rango} días (${osList.length} OS)
+                </strong>
+                <button onclick="toggleDetalleEstadoRango('${estado}', '${rango}', ${idx})" 
+                        style="background: #ef5350; color: white; border: none; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-weight: 600;">
+                    ✕ Cerrar
+                </button>
+            </div>
+            <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 12px; max-height: 400px; overflow-y: auto;">`;
+    
+    osList.forEach((os, i) => {
+        html += `
+            <div style="background: #f8f9fa; padding: 12px; border-radius: 8px; border-left: 3px solid #1976d2;">
+                <div style="font-weight: 600; color: #1976d2; margin-bottom: 8px;">
+                    ${i + 1}. OS: ${os.OSATMO || 'N/A'}
+                </div>
+                <div style="font-size: 14px; color: #666; line-height: 1.6;">
+                    <strong>Tipo:</strong> ${os.Tipo_de_OS || 'N/A'}<br>
+                    <strong>Tipología:</strong> ${os.Tipologia || 'N/A'}<br>
+                    <strong>Medidor:</strong> ${os.Medidor || 'N/A'}<br>
+                    <strong>Unidad:</strong> ${os.Unidad || 'N/A'}<br>
+                    <strong>Días:</strong> ${os.dias_calculados} días
+                </div>
+            </div>`;
+    });
+    
+    html += `</div></div>`;
+    
+    contenidoDetalle.innerHTML = html;
+    filaDetalle.style.display = 'table-row';
+}
+
+
+	// ========================================
+// 📊 TABLA 3: ESTADO_SAP VS ESTADO_ATOMO
+// ========================================
+function generarTablaEstadoSapVsAtomo(datos) {
+    // Obtener todos los estados únicos
+    const estadosSapSet = new Set();
+    const estadosAtomoSet = new Set();
+    
+    ['reguladas', 'noReguladas'].forEach(tipo => {
+        if (datos[tipo]) {
+            Object.values(datos[tipo]).forEach(unidad => {
+                Object.values(unidad.porRango).forEach(osList => {
+                    osList.forEach(os => {
+                        if (os.Estado_SAP) estadosSapSet.add(os.Estado_SAP);
+                        if (os.Estado_ATOMO) estadosAtomoSet.add(os.Estado_ATOMO);
+                    });
+                });
+            });
+        }
+    });
+    
+    const estadosSap = Array.from(estadosSapSet).sort();
+    const estadosAtomo = Array.from(estadosAtomoSet).sort();
+    
+    if (estadosSap.length === 0 || estadosAtomo.length === 0) {
+        return '<p style="color: #666; text-align: center;">No hay datos de Estado_SAP o Estado_ATOMO</p>';
+    }
+    
+    // Agrupar datos por cruce SAP x ATOMO
+    const agrupado = {};
+    estadosSap.forEach(sap => {
+        agrupado[sap] = {};
+        estadosAtomo.forEach(atomo => {
+            agrupado[sap][atomo] = [];
+        });
+    });
+    
+    // Llenar con datos
+    ['reguladas', 'noReguladas'].forEach(tipo => {
+        if (datos[tipo]) {
+            Object.values(datos[tipo]).forEach(unidad => {
+                Object.values(unidad.porRango).forEach(osList => {
+                    osList.forEach(os => {
+                        const sap = os.Estado_SAP || 'Sin Estado SAP';
+                        const atomo = os.Estado_ATOMO || 'Sin Estado ATOMO';
+                        if (agrupado[sap] && agrupado[sap][atomo]) {
+                            agrupado[sap][atomo].push(os);
+                        }
+                    });
+                });
+            });
+        }
+    });
+    
+    let html = `
+        <div style="overflow-x: auto; margin: 20px 0;">
+            <table style="width: 100%; border-collapse: collapse; background: white; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+                <thead>
+                    <tr style="background: linear-gradient(135deg, #00bcd4 0%, #0097a7 100%); color: white;">
+                        <th style="padding: 15px; text-align: left; font-weight: 600; border-right: 1px solid rgba(255,255,255,0.2);">Estado SAP</th>
+                        ${estadosAtomo.map(e => `<th style="padding: 15px; text-align: center; font-weight: 600; border-right: 1px solid rgba(255,255,255,0.2);">${e}</th>`).join('')}
+<th style="padding: 15px; text-align: center; font-weight: 700; background: rgba(0,0,0,0.2);">TOTAL</th>
+</tr>
+                    </tr>
+                </thead>
+                <tbody>`;
+    
+    estadosSap.forEach((sap, idx) => {
+        const bgColor = idx % 2 === 0 ? '#f8f9fa' : 'white';
+        html += `<tr style="background: ${bgColor}; border-bottom: 1px solid #e2e8f0;" id="fila_sap_atomo_${idx}">`;
+        html += `<td style="padding: 12px; font-weight: 600; color: #2d3748; border-right: 1px solid #e2e8f0;">${sap}</td>`;
+        
+        estadosAtomo.forEach(atomo => {
+            const count = agrupado[sap][atomo].length;
+            const hasData = count > 0;
+            
+            html += `
+                <td style="padding: 12px; text-align: center; border-right: 1px solid #e2e8f0; cursor: ${hasData ? 'pointer' : 'default'};" 
+                    ${hasData ? `onclick="toggleDetalleSapAtomo('${sap}', '${atomo}', ${idx})"` : ''}>
+                    <span style="
+                        display: inline-block;
+                        min-width: 30px;
+                        padding: 6px 12px;
+                        border-radius: 6px;
+                        font-weight: 600;
+                        background: ${hasData ? '#e0f7fa' : '#f5f5f5'};
+                        color: ${hasData ? '#00838f' : '#999'};
+                        ${hasData ? 'box-shadow: 0 2px 4px rgba(0,131,143,0.2);' : ''}
+                    ">
+                        ${count}
+                    </span>
+                </td>`;
+        });
+
+	const total = estadosAtomo.reduce((sum, atomo) => sum + agrupado[sap][atomo].length, 0);
+html += `<td style="padding: 12px; text-align: center; font-weight: 700; background: rgba(0,0,0,0.05); font-size: 16px;">${total}</td>`;
+
+html += `</tr>`;
+        
+        html += `</tr>`;
+        
+        // Fila oculta para detalle
+        html += `
+            <tr id="detalle_sap_atomo_${idx}" style="display: none; background: #e0f7fa;">
+                <td colspan="${estadosAtomo.length + 2}" style="padding: 15px;">
+                    <div id="contenido_detalle_sap_atomo_${idx}"></div>
+                </td>
+            </tr>`;
+    });
+    
+    html += `</tbody></table></div>`;
+    
+    // Guardar datos globalmente
+    window.datosSapVsAtomo = agrupado;
+    
+    return html;
+}
+
+// ========================================
+// 🔽 TOGGLE DETALLE SAP VS ATOMO
+// ========================================
+function toggleDetalleSapAtomo(sap, atomo, idx) {
+    const filaDetalle = document.getElementById(`detalle_sap_atomo_${idx}`);
+    const contenidoDetalle = document.getElementById(`contenido_detalle_sap_atomo_${idx}`);
+    
+    if (filaDetalle.style.display === 'table-row') {
+        filaDetalle.style.display = 'none';
+        return;
+    }
+    
+    const osList = window.datosSapVsAtomo[sap][atomo];
+    
+    if (!osList || osList.length === 0) {
+        contenidoDetalle.innerHTML = '<p style="color: #666;">No hay OS en este cruce</p>';
+        filaDetalle.style.display = 'table-row';
+        return;
+    }
+    
+    let html = `
+        <div style="background: white; padding: 15px; border-radius: 8px; border-left: 4px solid #00bcd4;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                <strong style="color: #2d3748; font-size: 16px;">
+                    📋 SAP: ${sap} | ATOMO: ${atomo} (${osList.length} OS)
+                </strong>
+                <button onclick="toggleDetalleSapAtomo('${sap}', '${atomo}', ${idx})" 
+                        style="background: #00838f; color: white; border: none; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-weight: 600;">
+                    ✕ Cerrar
+                </button>
+            </div>
+            <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 12px; max-height: 400px; overflow-y: auto;">`;
+    
+    osList.forEach((os, i) => {
+        html += `
+            <div style="background: #f8f9fa; padding: 12px; border-radius: 8px; border-left: 3px solid #00bcd4;">
+                <div style="font-weight: 600; color: #00838f; margin-bottom: 8px;">
+                    ${i + 1}. OS: ${os.OSATMO || 'N/A'}
+                </div>
+                <div style="font-size: 14px; color: #666; line-height: 1.6;">
+                    <strong>Tipo:</strong> ${os.Tipo_de_OS || 'N/A'}<br>
+                    <strong>Tipología:</strong> ${os.Tipologia || 'N/A'}<br>
+                    <strong>Medidor:</strong> ${os.Medidor || 'N/A'}<br>
+                    <strong>Unidad:</strong> ${os.Unidad || 'N/A'}<br>
+                    <strong>Días:</strong> ${os.dias_calculados} días
+                </div>
+            </div>`;
+    });
+    
+    html += `</div></div>`;
+    
+    contenidoDetalle.innerHTML = html;
+    filaDetalle.style.display = 'table-row';
+}
+
+	// ========================================
+// 🚫 TABLA 4: SOLO BLOQUEADOS POR RANGO
+// ========================================
+function generarTablaBloqueados(datos) {
+    const rangos = ['0-5', '6-10', '11-15', '16-20', '21-30', '31-45', '46-180', '>180'];
+    
+    // Filtrar solo OS bloqueadas de ambos tipos
+    const bloqueados = {};
+    rangos.forEach(rango => {
+        bloqueados[rango] = [];
+    });
+    
+    ['reguladas', 'noReguladas'].forEach(tipo => {
+        if (datos[tipo]) {
+            Object.values(datos[tipo]).forEach(unidad => {
+                Object.entries(unidad.porRango).forEach(([rango, osList]) => {
+                    osList.forEach(os => {
+                        const estadoAtomo = os.Estado_ATOMO ? os.Estado_ATOMO.toLowerCase() : '';
+                        // ✅ Acepta "Bloqueado", "Bloqueada", "bloqueado", "bloqueada"
+                        if (estadoAtomo.includes('bloquead')) {
+                            bloqueados[rango].push(os);
+                        }
+                    });
+                });
+            });
+        }
+    });
+    
+    // Contar total
+    const totalBloqueados = Object.values(bloqueados).reduce((sum, lista) => sum + lista.length, 0);
+    
+    if (totalBloqueados === 0) {
+        return '<p style="color: #666; text-align: center;">No hay OS bloqueadas</p>';
+    }
+    
+    let html = `
+        <div style="background: #ffebee; padding: 15px; border-radius: 10px; margin-bottom: 20px; border-left: 4px solid #f44336;">
+            <strong style="color: #c62828;">⚠️ Total de OS Bloqueadas: ${totalBloqueados}</strong>
+        </div>
+        
+        <div style="overflow-x: auto; margin: 20px 0;">
+            <table style="width: 100%; border-collapse: collapse; background: white; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+                <thead>
+                    <tr style="background: linear-gradient(135deg, #f44336 0%, #c62828 100%); color: white;">
+                        <th style="padding: 15px; text-align: center; font-weight: 600; border-right: 1px solid rgba(255,255,255,0.2);">Rango de Días</th>
+                        <th style="padding: 15px; text-align: center; font-weight: 600;">Cantidad</th>
+                    </tr>
+                </thead>
+                <tbody>`;
+    
+    rangos.forEach((rango, idx) => {
+        const count = bloqueados[rango].length;
+        const bgColor = idx % 2 === 0 ? '#f8f9fa' : 'white';
+        const hasData = count > 0;
+        
+        html += `
+            <tr style="background: ${bgColor}; border-bottom: 1px solid #e2e8f0;" id="fila_bloqueados_${idx}">
+                <td style="padding: 12px; font-weight: 600; color: #2d3748; text-align: center; border-right: 1px solid #e2e8f0;">${rango}</td>
+                <td style="padding: 12px; text-align: center; cursor: ${hasData ? 'pointer' : 'default'};" 
+                    ${hasData ? `onclick="toggleDetalleBloqueados('${rango}', ${idx})"` : ''}>
+                    <span style="
+                        display: inline-block;
+                        min-width: 50px;
+                        padding: 8px 16px;
+                        border-radius: 6px;
+                        font-weight: 600;
+                        background: ${hasData ? '#ffcdd2' : '#f5f5f5'};
+                        color: ${hasData ? '#c62828' : '#999'};
+                        ${hasData ? 'box-shadow: 0 2px 4px rgba(198,40,40,0.3);' : ''}
+                    ">
+                        ${count}
+                    </span>
+                </td>
+            </tr>`;
+        
+        // Fila oculta para detalle
+        html += `
+            <tr id="detalle_bloqueados_${idx}" style="display: none; background: #ffebee;">
+                <td colspan="2" style="padding: 15px;">
+                    <div id="contenido_detalle_bloqueados_${idx}"></div>
+                </td>
+            </tr>`;
+    });
+    
+    html += `</tbody></table></div>`;
+    
+    // Guardar datos globalmente
+    window.datosBloqueados = bloqueados;
+    
+    return html;
+}
+
+// ========================================
+// 🔽 TOGGLE DETALLE BLOQUEADOS
+// ========================================
+function toggleDetalleBloqueados(rango, idx) {
+    const filaDetalle = document.getElementById(`detalle_bloqueados_${idx}`);
+    const contenidoDetalle = document.getElementById(`contenido_detalle_bloqueados_${idx}`);
+    
+    if (filaDetalle.style.display === 'table-row') {
+        filaDetalle.style.display = 'none';
+        return;
+    }
+    
+    const osList = window.datosBloqueados[rango];
+    
+    if (!osList || osList.length === 0) {
+        contenidoDetalle.innerHTML = '<p style="color: #666;">No hay OS bloqueadas en este rango</p>';
+        filaDetalle.style.display = 'table-row';
+        return;
+    }
+    
+    let html = `
+        <div style="background: white; padding: 15px; border-radius: 8px; border-left: 4px solid #f44336;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                <strong style="color: #2d3748; font-size: 16px;">
+                    🚫 OS Bloqueadas - Rango ${rango} días (${osList.length} OS)
+                </strong>
+                <button onclick="toggleDetalleBloqueados('${rango}', ${idx})" 
+                        style="background: #c62828; color: white; border: none; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-weight: 600;">
+                    ✕ Cerrar
+                </button>
+            </div>
+            <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 12px; max-height: 400px; overflow-y: auto;">`;
+    
+    osList.forEach((os, i) => {
+        const comentario = os.Comentario || 'Sin comentario';
+        
+        html += `
+            <div style="background: #f8f9fa; padding: 12px; border-radius: 8px; border-left: 3px solid #f44336;">
+                <div style="font-weight: 600; color: #c62828; margin-bottom: 8px;">
+                    ${i + 1}. OS: ${os.OSATMO || 'N/A'}
+                </div>
+                <div style="font-size: 14px; color: #666; line-height: 1.6;">
+                    <strong>Tipo:</strong> ${os.Tipo_de_OS || 'N/A'}<br>
+                    <strong>Tipología:</strong> ${os.Tipologia || 'Sin tipología'}<br>
+                    <strong>Medidor:</strong> ${os.Medidor || 'N/A'}<br>
+                    <strong>Unidad:</strong> ${os.Unidad || 'N/A'}<br>
+                    <strong>Días:</strong> ${os.dias_calculados} días<br>
+                    <strong>Estado ATOMO:</strong> ${os.Estado_ATOMO || 'N/A'}<br>
+                    <strong>Estado SAP:</strong> ${os.Estado_SAP || 'N/A'}
+                </div>
+                <div style="margin-top: 10px; padding: 10px; background: #fff3cd; border-radius: 6px; border-left: 3px solid #ffc107;">
+                    <strong style="color: #e65100;">💬 Comentario:</strong><br>
+                    <span style="font-size: 13px; color: #555; word-break: break-word;">${comentario}</span>
+                </div>
+            </div>`;
+    });
+    
+    html += `</div></div>`;
+    
+    contenidoDetalle.innerHTML = html;
+    filaDetalle.style.display = 'table-row';
+}
+
+
+	
+	// ========================================
+// 🔽 TOGGLE DETALLE POR RANGO
+// ========================================
+function toggleDetalleRango(unidad, rango, tipoOS, idx) {
+    const filaDetalle = document.getElementById(`detalle_${tipoOS}_rango_${idx}`);
+    const contenidoDetalle = document.getElementById(`contenido_detalle_${tipoOS}_rango_${idx}`);
+    
+    // Si ya está visible, ocultarlo
+    if (filaDetalle.style.display === 'table-row') {
+        filaDetalle.style.display = 'none';
+        return;
+    }
+    
+    // Obtener OS de esa unidad y rango
+    const datos = tipoOS === 'reguladas' ? window.datosDetalleOS.reguladas : window.datosDetalleOS.noReguladas;
+    const osList = datos[unidad].porRango[rango];
+    
+    if (!osList || osList.length === 0) {
+        contenidoDetalle.innerHTML = '<p style="color: #666;">No hay OS en este rango</p>';
+        filaDetalle.style.display = 'table-row';
+        return;
+    }
+    
+    // Generar HTML del detalle
+    let html = `
+        <div style="background: white; padding: 15px; border-radius: 8px; border-left: 4px solid #667eea;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                <strong style="color: #2d3748; font-size: 16px;">
+                    📋 ${unidad} - Rango ${rango} días (${osList.length} OS)
+                </strong>
+                <button onclick="toggleDetalleRango('${unidad}', '${rango}', '${tipoOS}', ${idx})" 
+                        style="background: #ef5350; color: white; border: none; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-weight: 600;">
+                    ✕ Cerrar
+                </button>
+            </div>
+            <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 12px; max-height: 400px; overflow-y: auto;">`;
+    
+    osList.forEach((os, i) => {
+        html += `
+            <div style="background: #f8f9fa; padding: 12px; border-radius: 8px; border-left: 3px solid #1976d2;">
+                <div style="font-weight: 600; color: #1976d2; margin-bottom: 8px;">
+                    ${i + 1}. OS: ${os.OSATMO || 'N/A'}
+                </div>
+                <div style="font-size: 14px; color: #666; line-height: 1.6;">
+                    <strong>Tipología:</strong> ${os.Tipologia || 'Sin tipología'}<br>
+                    <strong>Medidor:</strong> ${os.Medidor || 'N/A'}<br>
+		    <strong>Unicom:</strong> ${os.Unicom || 'N/A'}<br>
+                    <strong>Días:</strong> ${os.dias_calculados} días<br>
+		    <strong>Fecha Gen.:</strong> ${os['Fecha Gen.'] || 'N/A'}<br>
+                    <strong>Estado:</strong> ${os.Estado_ATOMO || 'N/A'}
+		    <strong>Direccion:</strong> ${os.Direccion || 'Sin Direccion'}<br>
+                </div>
+            </div>`;
+    });
+    
+    html += `</div></div>`;
+    
+    contenidoDetalle.innerHTML = html;
+    filaDetalle.style.display = 'table-row';
+}
+
+
+	// ========================================
+// 🔽 TOGGLE DETALLE POR CONDICIÓN
+// ========================================
+function toggleDetalleCondicion(unidad, condicion, tipoOS, idx) {
+    const filaDetalle = document.getElementById(`detalle_${tipoOS}_condicion_${idx}`);
+    const contenidoDetalle = document.getElementById(`contenido_detalle_${tipoOS}_condicion_${idx}`);
+    
+    // Si ya está visible, ocultarlo
+    if (filaDetalle.style.display === 'table-row') {
+        filaDetalle.style.display = 'none';
+        return;
+    }
+    
+    // Obtener OS de esa unidad y condición
+    const datos = tipoOS === 'reguladas' ? window.datosDetalleOS.reguladas : window.datosDetalleOS.noReguladas;
+    const osList = datos[unidad].porCondicion[condicion];
+    
+    if (!osList || osList.length === 0) {
+        contenidoDetalle.innerHTML = '<p style="color: #666;">No hay OS en esta condición</p>';
+        filaDetalle.style.display = 'table-row';
+        return;
+    }
+    
+    // Colores por condición
+    const coloresCondicion = {
+        'HOY': '#ef5350',
+        'MAÑANA': '#ffa726',
+        'EN TIEMPO': '#66bb6a',
+        'VENCIDO': '#d32f2f'
+    };
+    const color = coloresCondicion[condicion];
+    
+    // Generar HTML del detalle
+    let html = `
+        <div style="background: white; padding: 15px; border-radius: 8px; border-left: 4px solid ${color};">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                <strong style="color: #2d3748; font-size: 16px;">
+                    ⚠️ ${unidad} - ${condicion} (${osList.length} OS)
+                </strong>
+                <button onclick="toggleDetalleCondicion('${unidad}', '${condicion}', '${tipoOS}', ${idx})" 
+                        style="background: ${color}; color: white; border: none; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-weight: 600;">
+                    ✕ Cerrar
+                </button>
+            </div>
+            <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 12px; max-height: 400px; overflow-y: auto;">`;
+    
+    osList.forEach((os, i) => {
+        html += `
+            <div style="background: #f8f9fa; padding: 12px; border-radius: 8px; border-left: 3px solid ${color};">
+                <div style="font-weight: 600; color: ${color}; margin-bottom: 8px;">
+                    ${i + 1}. OS: ${os.OSATMO || 'N/A'}
+                </div>
+                <div style="font-size: 14px; color: #666; line-height: 1.6;">
+                    <strong>Tipología:</strong> ${os.Tipologia || 'Sin tipología'}<br>
+                    <strong>Medidor:</strong> ${os.Medidor || 'N/A'}<br>
+		    <strong>Uicom:</strong> ${os.Unicom || 'N/A'}<br>
+                    <strong>Días:</strong> ${os.dias_calculados} días<br>
+		    <strong>Fecha Gen.:</strong> ${os['Fecha Gen.'] || 'N/A'}<br>
+                    <strong>Estado:</strong> ${os.Estado_ATOMO || 'N/A'}
+		    <strong>Direccion:</strong> ${os.Direccion || 'Sin Direccion'}<br>
+                </div>
+            </div>`;
+    });
+    
+    html += `</div></div>`;
+    
+    contenidoDetalle.innerHTML = html;
+    filaDetalle.style.display = 'table-row';
+}
+
+
+	// ========================================
+// 📡 TABLA UNICOM POR RANGO (AGRUPADA)
+// ========================================
+function generarTablaUnicomPorRango(osPendientes) {
+    const rangos = ['0-5', '6-10', '11-15', '16-20', '21-30', '31-45', '46-180', '>180'];
+    const datosPorUnicom = {};
+    
+    osPendientes.forEach(os => {
+        if (os.Unicom) {
+            const unicom = String(os.Unicom).trim();
+            const dias = calcularDias(os['Fecha Gen.']);
+            const rango = determinarRango(dias);
+            
+            if (!datosPorUnicom[unicom]) {
+                datosPorUnicom[unicom] = {};
+                rangos.forEach(r => datosPorUnicom[unicom][r] = []);
+            }
+            
+            if (datosPorUnicom[unicom][rango]) {
+                datosPorUnicom[unicom][rango].push({...os, dias_calculados: dias, rango: rango});
+            }
+        }
+    });
+    
+    window.unicomPorRango = datosPorUnicom;
+    
+    const unicoms = Object.keys(datosPorUnicom).sort();
+    
+    if (unicoms.length === 0) {
+        return '<p style="color: #666; text-align: center;">No hay datos UNICOM</p>';
+    }
+    
+    let html = `<div style="overflow-x: auto;"><table style="width: 100%; border-collapse: collapse; background: white; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+    <thead><tr style="background: #00acc1; color: white;"><th style="padding: 15px; text-align: left;">UNICOM</th>`;
+    
+    rangos.forEach(r => html += `<th style="padding: 15px; text-align: center;">${r}</th>`);
+    html += `<th style="padding: 15px; text-align: center; background: rgba(0,0,0,0.1);">TOTAL</th>`;
+    html += `</tr></thead><tbody>`;
+    
+    unicoms.forEach((unicom, idx) => {
+        const bgColor = idx % 2 === 0 ? '#f8f9fa' : 'white';
+        html += `<tr style="background: ${bgColor}; border-bottom: 1px solid #e2e8f0;"><td style="padding: 12px; font-weight: 600;">${unicom}</td>`;
+        
+        rangos.forEach(rango => {
+            const count = datosPorUnicom[unicom][rango].length;
+            html += `<td style="padding: 12px; text-align: center; cursor: ${count > 0 ? 'pointer' : 'default'};" ${count > 0 ? `onclick="toggleDetalleUnicomRango('${unicom}', '${rango}')"` : ''}>
+            <span style="padding: 6px 12px; border-radius: 6px; font-weight: 600; background: ${count > 0 ? '#b2ebf2' : '#f5f5f5'}; color: ${count > 0 ? '#006064' : '#999'};">${count}</span></td>`;
+        });
+	const total = rangos.reduce((sum, rango) => sum + datosPorUnicom[unicom][rango].length, 0);
+html += `<td style="padding: 12px; text-align: center; font-weight: 700; background: rgba(0,0,0,0.05);">${total}</td>`;
+        
+        html += `</tr>`;
+    });
+    
+    html += `</tbody></table></div>`;
+    return html;
+}
+
+// ========================================
+// 📡 TABLA UNICOM POR CONDICIÓN (AGRUPADA)
+// ========================================
+function generarTablaUnicomPorCondicion(osPendientes) {
+    const condiciones = ['HOY', 'MAÑANA', 'EN TIEMPO', 'VENCIDO'];
+    const datosPorUnicom = {};
+    
+    osPendientes.forEach(os => {
+        if (os.Unicom) {
+            const unicom = String(os.Unicom).trim();
+            const dias = calcularDias(os['Fecha Gen.']);
+            const condicion = determinarCondicion(dias, os.Dias_por_OS);
+            
+            if (!datosPorUnicom[unicom]) {
+                datosPorUnicom[unicom] = {};
+                condiciones.forEach(c => datosPorUnicom[unicom][c] = []);
+            }
+            
+            if (datosPorUnicom[unicom][condicion]) {
+                datosPorUnicom[unicom][condicion].push({...os, dias_calculados: dias, condicion: condicion});
+            }
+        }
+    });
+    
+    window.unicomPorCondicion = datosPorUnicom;
+    
+    const unicoms = Object.keys(datosPorUnicom).sort();
+    
+    if (unicoms.length === 0) {
+        return '<p style="color: #666; text-align: center;">No hay datos UNICOM</p>';
+    }
+    
+    const colores = {'HOY': '#ef5350', 'MAÑANA': '#ffa726', 'EN TIEMPO': '#66bb6a', 'VENCIDO': '#d32f2f'};
+    
+    let html = `<div style="overflow-x: auto;"><table style="width: 100%; border-collapse: collapse; background: white; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+    <thead><tr style="background: #26c6da; color: white;"><th style="padding: 15px; text-align: left;">UNICOM</th>`;
+    
+    condiciones.forEach(c => html += `<th style="padding: 15px; text-align: center;">${c}</th>`);
+html += `<th style="padding: 15px; text-align: center; background: rgba(0,0,0,0.1);">TOTAL</th>`;
+html += `</tr></thead><tbody>`;
+    
+    unicoms.forEach((unicom, idx) => {
+        const bgColor = idx % 2 === 0 ? '#f8f9fa' : 'white';
+                html += `<tr style="background: ${bgColor}; border-bottom: 1px solid #e2e8f0;"><td style="padding: 12px; font-weight: 600;">${unicom}</td>`;
+        condiciones.forEach(c => {
+            const count = datosPorUnicom[unicom][c].length;
+            html += `<td style="padding: 12px; text-align: center; cursor: ${count > 0 ? 'pointer' : 'default'};" ${count > 0 ? `onclick="toggleDetalleUnicomCondicion('${unicom}', '${c}')"` : ''}>
+            <span style="padding: 6px 12px; border-radius: 6px; font-weight: 600; background: ${count > 0 ? colores[c]+'20' : '#f5f5f5'}; color: ${count > 0 ? colores[c] : '#999'};">${count}</span></td>`;
+        });
+        // ✅ CALCULAR Y MOSTRAR EL TOTAL PARA ESTA FILA
+        const total = condiciones.reduce((sum, c) => sum + datosPorUnicom[unicom][c].length, 0);
+        html += `<td style="padding: 12px; text-align: center; font-weight: 700; background: rgba(0,0,0,0.05);">${total}</td>`;
+        html += `</tr>`;
+
+    });
+    
+    html += `</tbody></table></div>`;
+    return html;
+}
+
+// ========================================
+// 🔽 TOGGLE UNICOM RANGO
+// ========================================
+function toggleDetalleUnicomRango(unicom, rango) {
+    const modalId = `modal_unicom_rango_${unicom}_${rango}`;
+    let modal = document.getElementById(modalId);
+    
+    if (modal) {
+        modal.remove();
+        return;
+    }
+    
+    const osList = window.unicomPorRango[unicom][rango];
+    
+    let html = `<div id="${modalId}" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 9999; display: flex; align-items: center; justify-content: center; padding: 20px;" onclick="this.remove()">
+    <div style="background: white; padding: 20px; border-radius: 12px; max-width: 1000px; max-height: 80%; overflow-y: auto; width: 100%;" onclick="event.stopPropagation()">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; border-bottom: 2px solid #00acc1; padding-bottom: 10px;">
+    <strong style="color: #00acc1; font-size: 18px;">📡 UNICOM ${unicom} - Rango ${rango} (${osList.length} OS)</strong>
+    <button onclick="document.getElementById('${modalId}').remove()" style="background: #ef5350; color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-weight: 600;">✕ Cerrar</button>
+    </div><div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 12px;">`;
+    
+    osList.forEach((os, i) => {
+        html += `<div style="background: #f8f9fa; padding: 12px; border-radius: 8px; border-left: 3px solid #00acc1;">
+        <div style="font-weight: 600; color: #00acc1; margin-bottom: 8px;">${i + 1}. OS: ${os.OSATMO || 'N/A'}</div>
+        <div style="font-size: 14px; color: #666; line-height: 1.6;">
+        <strong>Tipología:</strong> ${os.Tipologia || 'N/A'}<br>
+        <strong>Medidor:</strong> ${os.Medidor || 'N/A'}<br>
+        <strong>Días:</strong> ${os.dias_calculados}<br>
+        <strong>Unidad:</strong> ${os.Unidad || 'N/A'}</div></div>`;
+    });
+    
+    html += `</div></div></div>`;
+    document.body.insertAdjacentHTML('beforeend', html);
+}
+
+// ========================================
+// 🔽 TOGGLE UNICOM CONDICIÓN
+// ========================================
+function toggleDetalleUnicomCondicion(unicom, condicion) {
+    const modalId = `modal_unicom_cond_${unicom}_${condicion}`;
+    let modal = document.getElementById(modalId);
+    
+    if (modal) {
+        modal.remove();
+        return;
+    }
+    
+    const osList = window.unicomPorCondicion[unicom][condicion];
+    const colores = {'HOY': '#ef5350', 'MAÑANA': '#ffa726', 'EN TIEMPO': '#66bb6a', 'VENCIDO': '#d32f2f'};
+    const color = colores[condicion];
+    
+    let html = `<div id="${modalId}" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 9999; display: flex; align-items: center; justify-content: center; padding: 20px;" onclick="this.remove()">
+    <div style="background: white; padding: 20px; border-radius: 12px; max-width: 1000px; max-height: 80%; overflow-y: auto; width: 100%;" onclick="event.stopPropagation()">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; border-bottom: 2px solid ${color}; padding-bottom: 10px;">
+    <strong style="color: ${color}; font-size: 18px;">📡 UNICOM ${unicom} - ${condicion} (${osList.length} OS)</strong>
+    <button onclick="document.getElementById('${modalId}').remove()" style="background: ${color}; color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-weight: 600;">✕ Cerrar</button>
+    </div><div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 12px;">`;
+    
+    osList.forEach((os, i) => {
+        html += `<div style="background: #f8f9fa; padding: 12px; border-radius: 8px; border-left: 3px solid ${color};">
+        <div style="font-weight: 600; color: ${color}; margin-bottom: 8px;">${i + 1}. OS: ${os.OSATMO || 'N/A'}</div>
+        <div style="font-size: 14px; color: #666; line-height: 1.6;">
+        <strong>Tipología:</strong> ${os.Tipologia || 'N/A'}<br>
+        <strong>Medidor:</strong> ${os.Medidor || 'N/A'}<br>
+        <strong>Días:</strong> ${os.dias_calculados}<br>
+        <strong>Condición:</strong> ${os.condicion}<br>
+        <strong>Unidad:</strong> ${os.Unidad || 'N/A'}</div></div>`;
+    });
+    
+    html += `</div></div></div>`;
+    document.body.insertAdjacentHTML('beforeend', html);
+}
+
+
+	// ========================================
+// 📍 CAPTURAR COORDENADA REAL
+// ========================================
+async function capturarCoordenadaReal(cuentaContrato, medidor, index) {
+    if (!navigator.geolocation) {
+        alert('Tu dispositivo no soporta geolocalización');
+        return;
+    }
+    
+    const displayDiv = document.getElementById(`coordRealDisplay_${index}`);
+    displayDiv.innerHTML = '<div class="loading" style="display: block; margin: 10px auto;"></div><p style="text-align: center; color: #666;">Obteniendo coordenadas GPS...</p>';
+    
+    navigator.geolocation.getCurrentPosition(
+        async (position) => {
+            const lat = position.coords.latitude.toFixed(6);
+            const lng = position.coords.longitude.toFixed(6);
+            const coordenadas = `${lat}, ${lng}`;
+            
+            const confirmar = confirm(`¿Guardar esta coordenada?\n\nCuenta: ${cuentaContrato}\nMedidor: ${medidor}\nCoordenada: ${coordenadas}`);
+            
+            if (!confirmar) {
+                displayDiv.innerHTML = '';
+                return;
+            }
+            
+            // Guardar en tabla coordenadas_reales (upsert = inserta o actualiza)
+            const { error } = await supabaseClient
+                .from('coordenadas_reales')
+                .upsert({
+                    CuentaContrato: cuentaContrato,
+                    Medidor: medidor,
+                    CoordenadasReales: coordenadas,
+                    usuario_capturo: currentUser.usuario
+                }, {
+                    onConflict: 'CuentaContrato,Medidor'
+                });
+            
+            if (error) {
+                alert('Error al guardar: ' + error.message);
+                displayDiv.innerHTML = '<p style="color: #d32f2f;">❌ Error al guardar</p>';
+                return;
+            }
+            
+            displayDiv.innerHTML = `
+                <div style="background: #e8f5e9; padding: 10px; border-radius: 8px; border-left: 4px solid #4caf50;">
+                    <strong style="color: #2e7d32;">✅ Coordenada Real Guardada:</strong><br>
+                    <a href="https://www.google.com/maps?q=${coordenadas}" target="_blank" style="color: #1976d2; text-decoration: underline;">${coordenadas}</a>
+                </div>`;
+        },
+        (error) => {
+    console.error('Error GPS:', error);
+    let mensaje = 'No se pudo obtener ubicación.\n\n';
+    if (error.code === 1) mensaje += 'Permiso denegado. Habilita ubicación en el navegador.';
+    else if (error.code === 2) mensaje += 'Ubicación no disponible. Activa GPS del dispositivo.';
+    else if (error.code === 3) mensaje += 'Tiempo agotado. Intenta de nuevo.';
+    alert(mensaje);
+            displayDiv.innerHTML = '<p style="color: #d32f2f;">❌ Error GPS</p>';
+        },
+        {
+            enableHighAccuracy: true,
+            timeout: 10000,
+            maximumAge: 0
+        }
+    );
+}
+
+
+
 // ========================================
 // 🧹 FUNCIÓN: Limpiar automáticamente otros campos de búsqueda
 // ========================================
@@ -3495,6 +5447,12 @@ function mostrarResultados(resultados) {
     
     resultados.forEach((item, index) => {
         html += `<div class="result-card"><div class="result-header">Resultado ${index + 1}</div>`;
+
+	// Buscar si tiene coordenada real guardada
+// Buscar si tiene coordenada real guardada
+if (selectedTable === 'consultas_servicios' || selectedTable === 'OS Pendientes' || selectedTable === 'OSCerradas') {
+    verificarCoordenadaReal(item.CuentaContrato, item.Medidor, index);
+}
         config.resultFields.forEach(field => {
     // 🎯 Ocultar NombreCliente en resultados si la config lo indica
     if (CONFIG_VISIBILIDAD.camposAdminSolo.includes(field) && currentUser.rol !== 'Administrador') {
@@ -3512,6 +5470,16 @@ function mostrarResultados(resultados) {
 });
         
         html += generarBotonesAccion(item, index, config);
+
+// Botón Coordenadas Reales (consultas_servicios, OS Pendientes, OS Cerradas)
+if (selectedTable === 'consultas_servicios' || selectedTable === 'OS Pendientes' || selectedTable === 'OSCerradas') {
+    html += `<div style="margin-top: 15px; padding-top: 15px; border-top: 2px solid #e2e8f0;">
+        <button class="btn btn-secondary" onclick="capturarCoordenadaReal('${item.CuentaContrato}', '${item.Medidor}', ${index})" style="background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%);">
+            📍 Capturar Coordenada Real
+        </button>
+        <div id="coordRealDisplay_${index}" style="margin-top: 10px;"></div>
+    </div>`;
+}
         html += '</div>'; // Cierre result-card
     });
 
@@ -3523,6 +5491,29 @@ function mostrarResultados(resultados) {
     }
     
     container.innerHTML = html;
+}
+
+	// ========================================
+// 🔍 VERIFICAR COORDENADA REAL EXISTENTE
+// ========================================
+async function verificarCoordenadaReal(cuentaContrato, medidor, index) {
+    const { data } = await supabaseClient
+        .from('coordenadas_reales')
+        .select('CoordenadasReales')
+        .eq('CuentaContrato', cuentaContrato)
+        .eq('Medidor', medidor)
+        .single();
+    
+    if (data && data.CoordenadasReales) {
+        const displayDiv = document.getElementById(`coordRealDisplay_${index}`);
+        if (displayDiv) {
+            displayDiv.innerHTML = `
+                <div style="background: #e3f2fd; padding: 10px; border-radius: 8px; border-left: 4px solid #2196f3; margin-top: 10px;">
+                    <strong style="color: #1565c0;">📍 Coordenada Real:</strong><br>
+                    <a href="https://www.google.com/maps?q=${data.CoordenadasReales}" target="_blank" style="color: #1976d2; text-decoration: underline;">${data.CoordenadasReales}</a>
+                </div>`;
+        }
+    }
 }
 
 // ===================================================================
@@ -3593,7 +5584,7 @@ function generarBotonesAccion(item, index, config) {
         
         // Roles sin acceso a gráficas
         const sinGraficas = ['Lectura', 'Contratista', 'ATTF', 'Poda'];
-        const puedeVerGraficas = !sinGraficas.includes(currentUser.rol);
+        const puedeVerGraficas = currentUser && currentUser.rol && !sinGraficas.includes(currentUser.rol);
         
         if (isCoordenadasLector) {
             html += `<button class="btn btn-secondary" onclick="abrirCoordenadas('${val}')">📍 Coordenadas Lector</button>`;
@@ -4019,6 +6010,13 @@ function seleccionarTabla(tableName) {
         alert('Su rol solo permite acceso a Consultas de Servicios');
         return;
     }
+    // Validar acceso a Detalle OS
+if (tableName === 'detalle_os') {
+    if (currentUser.rol !== 'Administrador' && currentUser.rol !== 'Supervisor') {
+        alert('⚠️ Solo Administradores y Supervisores pueden acceder a Detalle OS');
+        return;
+    }
+}
 
     selectedTable = tableName; 
     const config = tableConfigs[tableName];
