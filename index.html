@@ -10,6 +10,7 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.3/dist/umd/supabase.min.js "></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js "></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2 "></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <style>
         /* Variables de color para toda la aplicación */
         :root {
@@ -589,6 +590,12 @@
     			<div class="table-title">Detalle OS</div>
     			<div class="table-description">Análisis por unidad y estado</div>
 		    </div>
+
+		    <div class="table-option" onclick="seleccionarTabla('retiro_medidores')">
+    			<span class="table-icon">📦</span>
+    			<div class="table-title">IPR - Retiro de Medidores</div>
+   			 <div class="table-description">Registro de retiro de medidores</div>
+		    </div>
                 </div>
             </div>
         </div>
@@ -795,6 +802,15 @@ function verificarHorarioPermitido(rol, userData = null) {
             return { permitido: true };
         }
         return { permitido: false, mensaje: 'Su acceso está limitado de 5:00 AM a 6:00 PM.' };
+    }
+
+
+	// 🎯 CAMBIO: Bodega - 24/7 (Lunes-Sábado, domingo bloqueado)
+    if (rol === 'Bodega') {
+        if (diaActual === 0) { // Domingo bloqueado
+            return { permitido: false, mensaje: 'El rol Bodega no tiene acceso los domingos.' };
+        }
+        return { permitido: true };
     }
     
     // Poda: 5 AM - 6 PM (validación adicional de descanso en otra función)
@@ -2059,6 +2075,20 @@ function mostrarTablasSegunRol() {
         return;
     }
     
+    // 🆕 BODEGA: Solo IPR + OS Cerradas
+    if (currentUser.rol === 'Bodega') {
+        tableOptions.forEach(option => {
+            const onclick = option.getAttribute('onclick');
+            if (onclick && (onclick.includes('retiro_medidores') || onclick.includes('OSCerradas'))) {
+                option.style.display = 'block';
+            } else {
+                option.style.display = 'none';
+            }
+        });
+        console.log('✅ Bodega: IPR + OS Cerradas');
+        return;
+    }
+    
     // 🎯 LECTURA: Solo consultas_servicios
     if (currentUser.rol === 'Lectura') {
         tableOptions.forEach(option => {
@@ -2073,21 +2103,23 @@ function mostrarTablasSegunRol() {
         return;
     }
     
-    // 🎯 ATTF y PODA: consultas_servicios + TX y Cortes
+    // 🎯 ATTF y PODA: consultas_servicios + TX y Cortes + IPR
     if (currentUser.rol === 'ATTF' || currentUser.rol === 'Poda') {
         tableOptions.forEach(option => {
             const onclick = option.getAttribute('onclick');
-            if (onclick && (onclick.includes('consultas_servicios') || onclick.includes('TX y Cortes'))) {
+            if (onclick && (onclick.includes('consultas_servicios') || 
+                           onclick.includes('TX y Cortes') || 
+                           onclick.includes('retiro_medidores'))) {
                 option.style.display = 'block';
             } else {
                 option.style.display = 'none';
             }
         });
-        console.log('✅ ATTF/Poda: consultas_servicios + TX y Cortes');
+        console.log('✅ ATTF/Poda: consultas_servicios + TX y Cortes + IPR');
         return;
     }
     
-    // 🎯 CONTRATISTA y CONSULTA: Todo excepto usuarios
+    // 🎯 CONTRATISTA y CONSULTA: Todo excepto usuarios + IPR
     if (currentUser.rol === 'Contratista' || currentUser.rol === 'Consulta') {
         tableOptions.forEach(option => {
             const onclick = option.getAttribute('onclick');
@@ -2111,7 +2143,6 @@ function mostrarTablasSegunRol() {
         }
     });
 }
-
 
 async function desbloquearUsuario(username) {
     if (!currentUser || currentUser.rol !== 'Supervisor') {
@@ -2285,6 +2316,15 @@ async function incrementarContadorBusquedas() {
     actions: [],
     esDetalleOS: true,
     rolesPermitidos: ['Administrador', 'Supervisor']
+},
+'retiro_medidores': {
+    title: 'IPR - Retiro de Medidores',
+    icon: '📦',
+    fields: [],
+    resultFields: [],
+    actions: [],
+    esIPR: true,
+    rolesPermitidos: ['Administrador', 'Supervisor', 'Bodega', 'ATTF', 'Contratista', 'Consulta']
 }
 };
 
@@ -2714,9 +2754,12 @@ async function logout() {
             <button class="btn btn-secondary" onclick="buscarUsuarioAdmin()" style="margin: 0;">🔍 Buscar</button>
         </div>
         
-        <div style="text-align: center; margin-top: 20px;">
-            <button class="btn" onclick="mostrarFormularioNuevoUsuario()" style="background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%); width: auto; padding: 15px 30px;">
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-top: 20px;">
+            <button class="btn" onclick="mostrarFormularioNuevoUsuario()" style="background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);">
                 ➕ Crear Nuevo Usuario
+            </button>
+            <button class="btn" onclick="mostrarActualizacionMasiva()" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">
+                📤 Actualización Masiva
             </button>
         </div>
     `;
@@ -2734,6 +2777,13 @@ if (selectedTable === 'detalle_os') {
     cargarInterfazDetalleOS();
     return;
 }
+
+
+// 🆕 Caso especial para IPR
+    if (selectedTable === 'retiro_medidores') {
+        cargarInterfazIPR();
+        return;
+    }
     
     // Caso normal para otras tablas
     let html = '';
@@ -3400,6 +3450,502 @@ async function guardarNuevoUsuario() {
     `;
 }
 
+	// ========================================
+// 📤 MOSTRAR INTERFAZ ACTUALIZACIÓN MASIVA
+// ========================================
+function mostrarActualizacionMasiva() {
+    const resultsContainer = document.getElementById('searchResults');
+    
+    resultsContainer.innerHTML = `
+        <div class="result-card" style="background: #e8eaf6; border: 2px solid #5c6bc0;">
+            <div class="result-header">📤 Actualización Masiva de Consulta Suministros</div>
+            
+            <div style="background: #fff3cd; padding: 15px; border-radius: 10px; margin: 20px 0; border-left: 4px solid #ffc107;">
+                <strong>⚠️ Importante:</strong><br>
+                • Solo para rol <strong>Administrador</strong><br>
+                • Actualiza registros existentes (no crea nuevos)<br>
+                • Proceso irreversible
+            </div>
+            
+            <div style="max-width: 700px; margin: 0 auto;">
+                
+                <div class="form-group">
+                    <label style="font-size: 16px; font-weight: 600; color: #2d3748;">
+                        🎯 Seleccionar Tipo de Actualización:
+                    </label>
+                    <select id="tipoActualizacion" onchange="mostrarInstruccionesArchivo()" 
+                            style="width: 100%; padding: 12px; border-radius: 8px; border: 2px solid #e1e5e9; font-size: 16px;">
+                        <option value="">-- Seleccione una opción --</option>
+                        <option value="medidor_comentario">Actualizar Medidor + Comentario General</option>
+                        <option value="nombre_cuenta">Actualizar Nombre Cliente + Cuenta Contrato</option>
+                        <option value="grafica">Actualizar Gráfica</option>
+                    </select>
+                </div>
+                
+                <div id="instruccionesArchivo" style="display: none; background: #e3f2fd; padding: 15px; border-radius: 10px; margin: 20px 0; border-left: 4px solid #2196f3;">
+                    <!-- Se llena dinámicamente -->
+                </div>
+                
+                <div class="form-group">
+                    <label style="font-size: 16px; font-weight: 600; color: #2d3748;">
+                        📁 Subir Archivo:
+                    </label>
+                    <input type="file" id="archivoActualizacion" accept=".xlsx,.xls,.csv" 
+                           style="width: 100%; padding: 12px; border-radius: 8px; border: 2px solid #e1e5e9; font-size: 14px;">
+                    <small style="color: #666; display: block; margin-top: 5px;">
+                        Formatos aceptados: Excel (.xlsx, .xls) o CSV
+                    </small>
+                </div>
+                
+                <div class="action-buttons" style="margin-top: 25px;">
+                    <button class="btn btn-secondary" onclick="procesarActualizacionMasiva()" 
+                            style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">
+                        ⚡ Procesar Actualización
+                    </button>
+                    <button class="btn btn-danger" onclick="document.getElementById('searchResults').innerHTML = ''">
+                        ✕ Cancelar
+                    </button>
+                </div>
+                
+            </div>
+        </div>
+    `;
+}
+
+
+	// ========================================
+// 📋 MOSTRAR INSTRUCCIONES SEGÚN TIPO
+// ========================================
+function mostrarInstruccionesArchivo() {
+    const tipo = document.getElementById('tipoActualizacion').value;
+    const contenedor = document.getElementById('instruccionesArchivo');
+    
+    if (!tipo) {
+        contenedor.style.display = 'none';
+        return;
+    }
+    
+    let html = '<strong>📋 Formato requerido del archivo:</strong><br><br>';
+    
+    if (tipo === 'medidor_comentario') {
+        html += `
+            <strong>Columnas (en este orden):</strong><br>
+            1. CuentaContrato<br>
+            2. Medidor<br>
+            3. ComentarioGeneral<br><br>
+            <strong>Búsqueda:</strong> Por CuentaContrato<br>
+            <strong>Actualiza:</strong> Medidor y ComentarioGeneral
+        `;
+    } else if (tipo === 'nombre_cuenta') {
+        html += `
+            <strong>Columnas (en este orden):</strong><br>
+            1. CuentaContrato<br>
+            2. Medidor<br>
+            3. NombreCliente<br><br>
+            <strong>Búsqueda:</strong> Por Medidor<br>
+            <strong>Actualiza:</strong> CuentaContrato y NombreCliente
+        `;
+    } else if (tipo === 'grafica') {
+        html += `
+            <strong>Columnas (en este orden):</strong><br>
+            1. CuentaContrato<br>
+            2. Grafica<br><br>
+            <strong>Búsqueda:</strong> Por CuentaContrato<br>
+            <strong>Actualiza:</strong> Grafica
+        `;
+    }
+    
+    contenedor.innerHTML = html;
+    contenedor.style.display = 'block';
+}
+
+	
+	// ========================================
+// ⚡ PROCESAR ACTUALIZACIÓN MASIVA
+// ========================================
+async function procesarActualizacionMasiva() {
+    const tipo = document.getElementById('tipoActualizacion').value;
+    const archivoInput = document.getElementById('archivoActualizacion');
+    
+    // Validaciones
+    if (!tipo) {
+        alert('⚠️ Por favor seleccione el tipo de actualización');
+        return;
+    }
+    
+    if (!archivoInput.files || archivoInput.files.length === 0) {
+        alert('⚠️ Por favor seleccione un archivo');
+        return;
+    }
+    
+    const archivo = archivoInput.files[0];
+    const extension = archivo.name.split('.').pop().toLowerCase();
+    
+    if (!['xlsx', 'xls', 'csv'].includes(extension)) {
+        alert('⚠️ Formato de archivo no válido. Use Excel (.xlsx, .xls) o CSV');
+        return;
+    }
+    
+    // Mostrar loading
+    const resultsContainer = document.getElementById('searchResults');
+    resultsContainer.innerHTML = `
+        <div class="result-card" style="background: #e3f2fd; border: 2px solid #2196f3; text-align: center;">
+            <div class="loading" style="display: block; margin: 20px auto;"></div>
+            <h3 style="color: #1565c0; margin: 20px 0;">Procesando archivo...</h3>
+            <p style="color: #666;">Por favor espere, esto puede tomar unos momentos</p>
+        </div>
+    `;
+    
+    try {
+        // Leer archivo
+        const datos = await leerArchivoActualizacion(archivo, extension);
+        
+        if (!datos || datos.length === 0) {
+            alert('❌ El archivo está vacío o no se pudo leer');
+            mostrarActualizacionMasiva();
+            return;
+        }
+        
+        // Validar estructura según tipo
+        const validacion = validarEstructuraArchivo(datos, tipo);
+        
+        if (!validacion.valido) {
+            alert(`❌ Error en estructura del archivo:\n\n${validacion.mensaje}`);
+            mostrarActualizacionMasiva();
+            return;
+        }
+        
+        // Buscar coincidencias en BD
+        const resultado = await buscarCoincidencias(datos, tipo);
+        
+        // Mostrar preview de actualización
+        mostrarPreviewActualizacion(resultado, tipo);
+        
+    } catch (error) {
+        console.error('Error procesando archivo:', error);
+        alert('❌ Error al procesar el archivo: ' + error.message);
+        mostrarActualizacionMasiva();
+    }
+}
+
+	// ========================================
+// 📖 LEER ARCHIVO (EXCEL O CSV)
+// ========================================
+async function leerArchivoActualizacion(archivo, extension) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        
+        reader.onload = async (e) => {
+            try {
+                let datos = [];
+                
+                if (extension === 'csv') {
+                    // Leer CSV
+                    const texto = e.target.result;
+                    const lineas = texto.split('\n').filter(l => l.trim());
+                    
+                    // Saltar header y procesar
+                    for (let i = 1; i < lineas.length; i++) {
+                        const valores = lineas[i].split(',').map(v => v.trim());
+                        if (valores.length > 0 && valores[0]) {
+                            datos.push(valores);
+                        }
+                    }
+                } else {
+                    // Leer Excel con SheetJS
+                    const data = new Uint8Array(e.target.result);
+                    const workbook = XLSX.read(data, { type: 'array' });
+                    const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+                    const jsonData = XLSX.utils.sheet_to_json(firstSheet, { header: 1 });
+                    
+                    // Saltar header
+                    datos = jsonData.slice(1).filter(row => row.length > 0 && row[0]);
+                }
+                
+                console.log(`✅ Archivo leído: ${datos.length} filas`);
+                resolve(datos);
+                
+            } catch (error) {
+                reject(error);
+            }
+        };
+        
+        reader.onerror = () => reject(new Error('Error al leer el archivo'));
+        
+        if (extension === 'csv') {
+            reader.readAsText(archivo);
+        } else {
+            reader.readAsArrayBuffer(archivo);
+        }
+    });
+}
+
+
+	// ========================================
+// ✅ VALIDAR ESTRUCTURA DEL ARCHIVO
+// ========================================
+function validarEstructuraArchivo(datos, tipo) {
+    let columnasRequeridas = 0;
+    let nombreColumnas = '';
+    
+    if (tipo === 'medidor_comentario') {
+        columnasRequeridas = 3;
+        nombreColumnas = 'CuentaContrato, Medidor, ComentarioGeneral';
+    } else if (tipo === 'nombre_cuenta') {
+        columnasRequeridas = 3;
+        nombreColumnas = 'CuentaContrato, Medidor, NombreCliente';
+    } else if (tipo === 'grafica') {
+        columnasRequeridas = 2;
+        nombreColumnas = 'CuentaContrato, Grafica';
+    }
+    
+    // Validar que todas las filas tengan el número correcto de columnas
+    for (let i = 0; i < datos.length; i++) {
+        if (datos[i].length < columnasRequeridas) {
+            return {
+                valido: false,
+                mensaje: `Fila ${i + 2}: Se esperan ${columnasRequeridas} columnas (${nombreColumnas}), pero solo se encontraron ${datos[i].length}`
+            };
+        }
+    }
+    
+    return { valido: true };
+}
+
+	// ========================================
+// 🔍 BUSCAR COINCIDENCIAS EN BD
+// ========================================
+async function buscarCoincidencias(datos, tipo) {
+    const encontrados = [];
+    const noEncontrados = [];
+    
+    for (const fila of datos) {
+        let campoBusqueda, valorBusqueda, datosActualizar;
+        
+        if (tipo === 'medidor_comentario') {
+            campoBusqueda = 'CuentaContrato';
+            valorBusqueda = String(fila[0]).trim();
+            datosActualizar = {
+                Medidor: String(fila[1]).trim(),
+                ComentarioGeneral: String(fila[2]).trim()
+            };
+        } else if (tipo === 'nombre_cuenta') {
+            campoBusqueda = 'Medidor';
+            valorBusqueda = String(fila[1]).trim();
+            datosActualizar = {
+                CuentaContrato: String(fila[0]).trim(),
+                NombreCliente: String(fila[2]).trim()
+            };
+        } else if (tipo === 'grafica') {
+            campoBusqueda = 'CuentaContrato';
+            valorBusqueda = String(fila[0]).trim();
+            datosActualizar = {
+                Grafica: String(fila[1]).trim()
+            };
+        }
+        
+        // Buscar en BD
+        const { data, error } = await supabaseClient
+            .from('consultas_servicios')
+            .select('id')
+            .eq(campoBusqueda, valorBusqueda)
+            .single();
+        
+        if (data && !error) {
+            encontrados.push({
+                id: data.id,
+                busqueda: valorBusqueda,
+                datos: datosActualizar
+            });
+        } else {
+            noEncontrados.push({
+                busqueda: valorBusqueda,
+                campo: campoBusqueda
+            });
+        }
+    }
+    
+    return { encontrados, noEncontrados, tipo };
+}
+
+
+	// ========================================
+// 👁️ MOSTRAR PREVIEW DE ACTUALIZACIÓN
+// ========================================
+function mostrarPreviewActualizacion(resultado, tipo) {
+    const { encontrados, noEncontrados } = resultado;
+    const resultsContainer = document.getElementById('searchResults');
+    
+    let nombreTipo = '';
+    if (tipo === 'medidor_comentario') nombreTipo = 'Medidor + Comentario General';
+    else if (tipo === 'nombre_cuenta') nombreTipo = 'Nombre Cliente + Cuenta Contrato';
+    else if (tipo === 'grafica') nombreTipo = 'Gráfica';
+    
+    let html = `
+        <div class="result-card" style="background: #fff3cd; border: 2px solid #ffc107;">
+            <div class="result-header">⚠️ Confirmación de Actualización</div>
+            
+            <div style="background: white; padding: 20px; border-radius: 10px; margin: 20px 0;">
+                <strong style="font-size: 18px; color: #2d3748;">📊 Resumen:</strong><br><br>
+                <div style="font-size: 16px; line-height: 2;">
+                    • Tipo: <strong>${nombreTipo}</strong><br>
+                    • Total de registros en archivo: <strong>${encontrados.length + noEncontrados.length}</strong><br>
+                    • ✅ Registros encontrados (se actualizarán): <strong style="color: #2e7d32;">${encontrados.length}</strong><br>
+                    • ❌ Registros no encontrados (se ignorarán): <strong style="color: #d32f2f;">${noEncontrados.length}</strong>
+                </div>
+            </div>
+    `;
+    
+    // Mostrar no encontrados si existen
+    if (noEncontrados.length > 0) {
+        html += `
+            <div style="background: #ffebee; padding: 15px; border-radius: 10px; margin: 20px 0; border-left: 4px solid #d32f2f; max-height: 200px; overflow-y: auto;">
+                <strong style="color: #c62828;">❌ Registros NO encontrados:</strong><br><br>
+                <div style="font-size: 14px; line-height: 1.8;">`;
+        
+        noEncontrados.slice(0, 10).forEach(item => {
+            html += `• ${item.campo}: <strong>${item.busqueda}</strong><br>`;
+        });
+        
+        if (noEncontrados.length > 10) {
+            html += `<br><em>... y ${noEncontrados.length - 10} más</em>`;
+        }
+        
+        html += `</div></div>`;
+    }
+    
+    // Botones de confirmación
+    html += `
+            <div style="background: #e3f2fd; padding: 20px; border-radius: 10px; margin: 20px 0; border-left: 4px solid #2196f3;">
+                <strong style="font-size: 16px; color: #1565c0;">⚠️ Esta acción es IRREVERSIBLE</strong><br>
+                <p style="margin: 10px 0 0 0; color: #666;">
+                    Los datos actuales serán reemplazados por los del archivo.
+                </p>
+            </div>
+            
+            <div class="action-buttons" style="margin-top: 25px;">
+                <button class="btn btn-secondary" onclick="ejecutarActualizacionMasiva(${JSON.stringify(encontrados).replace(/"/g, '&quot;')}, '${tipo}')" 
+                        style="background: linear-gradient(135deg, #4caf50 0%, #2e7d32 100%); font-size: 18px; padding: 18px 30px;">
+                    ✅ Confirmar y Actualizar (${encontrados.length} registros)
+                </button>
+                <button class="btn btn-danger" onclick="mostrarActualizacionMasiva()" style="font-size: 16px; padding: 15px 25px;">
+                    ✕ Cancelar
+                </button>
+            </div>
+            
+        </div>
+    `;
+    
+    resultsContainer.innerHTML = html;
+}
+
+	// ========================================
+// 🚀 EJECUTAR ACTUALIZACIÓN MASIVA
+// ========================================
+async function ejecutarActualizacionMasiva(encontrados, tipo) {
+    const resultsContainer = document.getElementById('searchResults');
+    
+    // Mostrar progreso
+    resultsContainer.innerHTML = `
+        <div class="result-card" style="background: #e3f2fd; border: 2px solid #2196f3; text-align: center;">
+            <div class="loading" style="display: block; margin: 20px auto;"></div>
+            <h3 style="color: #1565c0; margin: 20px 0;">Actualizando registros...</h3>
+            <p style="color: #666; font-size: 18px;" id="progresoActualizacion">0 / ${encontrados.length}</p>
+        </div>
+    `;
+    
+    const exitosos = [];
+    const fallidos = [];
+    
+    // Actualizar uno por uno
+    for (let i = 0; i < encontrados.length; i++) {
+        const item = encontrados[i];
+        
+        try {
+            const { error } = await supabaseClient
+                .from('consultas_servicios')
+                .update(item.datos)
+                .eq('id', item.id);
+            
+            if (error) {
+                fallidos.push({ busqueda: item.busqueda, error: error.message });
+            } else {
+                exitosos.push(item.busqueda);
+            }
+            
+        } catch (err) {
+            fallidos.push({ busqueda: item.busqueda, error: err.message });
+        }
+        
+        // Actualizar progreso
+        document.getElementById('progresoActualizacion').textContent = `${i + 1} / ${encontrados.length}`;
+    }
+    
+    // Mostrar resultado final
+    mostrarResultadoActualizacion(exitosos, fallidos, tipo);
+}
+
+// ========================================
+// 📊 MOSTRAR RESULTADO FINAL
+// ========================================
+function mostrarResultadoActualizacion(exitosos, fallidos, tipo) {
+    const resultsContainer = document.getElementById('searchResults');
+    
+    let nombreTipo = '';
+    if (tipo === 'medidor_comentario') nombreTipo = 'Medidor + Comentario General';
+    else if (tipo === 'nombre_cuenta') nombreTipo = 'Nombre Cliente + Cuenta Contrato';
+    else if (tipo === 'grafica') nombreTipo = 'Gráfica';
+    
+    let html = `
+        <div class="result-card" style="background: ${fallidos.length === 0 ? '#e8f5e9' : '#fff3cd'}; border: 2px solid ${fallidos.length === 0 ? '#4caf50' : '#ffc107'};">
+            <div class="result-header">${fallidos.length === 0 ? '✅' : '⚠️'} Actualización Completada</div>
+            
+            <div style="background: white; padding: 20px; border-radius: 10px; margin: 20px 0;">
+                <strong style="font-size: 18px; color: #2d3748;">📊 Resultado Final:</strong><br><br>
+                <div style="font-size: 16px; line-height: 2;">
+                    • Tipo de actualización: <strong>${nombreTipo}</strong><br>
+                    • ✅ Registros actualizados correctamente: <strong style="color: #2e7d32;">${exitosos.length}</strong><br>
+                    • ❌ Registros con errores: <strong style="color: #d32f2f;">${fallidos.length}</strong>
+                </div>
+            </div>
+    `;
+    
+    // Mostrar fallidos si existen
+    if (fallidos.length > 0) {
+        html += `
+            <div style="background: #ffebee; padding: 15px; border-radius: 10px; margin: 20px 0; border-left: 4px solid #d32f2f; max-height: 250px; overflow-y: auto;">
+                <strong style="color: #c62828;">❌ Errores encontrados:</strong><br><br>
+                <div style="font-size: 14px; line-height: 1.8;">`;
+        
+        fallidos.forEach(item => {
+            html += `• ${item.busqueda}: <span style="color: #666;">${item.error}</span><br>`;
+        });
+        
+        html += `</div></div>`;
+    }
+    
+    html += `
+            <div style="text-align: center; margin-top: 25px;">
+                <button class="btn" onclick="mostrarActualizacionMasiva()" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); width: auto; padding: 15px 30px;">
+                    🔄 Nueva Actualización
+                </button>
+                <button class="btn btn-secondary" onclick="document.getElementById('searchResults').innerHTML = ''" style="width: auto; padding: 15px 30px; margin-left: 15px;">
+                    ✕ Cerrar
+                </button>
+            </div>
+            
+        </div>
+    `;
+    
+    resultsContainer.innerHTML = html;
+    
+    console.log(`✅ Actualización completada: ${exitosos.length} exitosos, ${fallidos.length} fallidos`);
+}
+
+	
+
+
+
 
    // ===================================================================
 // 🔍 FUNCIÓN UNIFICADA DE BÚSQUEDA (VERSIÓN COMPLETA Y OPTIMIZADA)
@@ -3448,45 +3994,38 @@ async function buscar(campo, tipo) {
 // 🔄 TRANSFORMAR USUARIO A FORMATO UNIDAD
 // ========================================
 function transformarUsuarioAUnidad(usuario) {
-    // Ejemplo: CLOPCPAC001 → CL-OPC-PAC-001
-    if (!usuario || usuario.length < 11) return usuario;
+    if (!usuario) return usuario;
     
-    // Insertar guiones en posiciones específicas
-    return usuario.slice(0, 2) + '-' + 
-           usuario.slice(2, 5) + '-' + 
-           usuario.slice(5, 8) + '-' + 
-           usuario.slice(8);
-}
-
-
-	async function fetchAllFromTable(tableName, columns = '*') {
-    const batchSize = 1000;
-    let allData = [];
-    let offset = 0;
-    let hasMore = true;
-
-    while (hasMore) {
-        const { data, error, count } = await supabaseClient
-            .from(tableName)
-            .select(columns, { count: offset === 0 ? 'exact' : undefined })
-            .range(offset, offset + batchSize - 1);
-
-        if (error) {
-            console.error('Error en fetchAllFromTable:', error);
-            throw error;
-        }
-
-        if (data && data.length > 0) {
-            allData = allData.concat(data);
-            console.log(`✅ Cargadas ${allData.length} de ${count || '?'} filas...`);
-            offset += batchSize;
-            hasMore = data.length === batchSize; // Si trajo menos de 1000, es la última página
-        } else {
-            hasMore = false;
-        }
+    // 🆕 Lista de usuarios que NO se transforman
+    const usuariosSinTransformar = [
+        'admin',
+        'jmec6885',
+        'bodega001',
+        'bodega',
+        'supervisor'
+    ];
+    
+    // Verificar si es un usuario especial (sin transformar)
+    if (usuariosSinTransformar.includes(usuario.toLowerCase())) {
+        console.log(`✅ Usuario sin transformación: ${usuario}`);
+        return usuario;
     }
-
-    return { data: allData, count: allData.length };
+    
+    // 🔄 Transformación para formato CLxxxPACnnn → CL-xxx-PAC-nnn
+    // Ejemplo: CLOPCPAC001 → CL-OPC-PAC-001
+    if (usuario.length >= 11) {
+        const transformado = usuario.slice(0, 2) + '-' + 
+                            usuario.slice(2, 5) + '-' + 
+                            usuario.slice(5, 8) + '-' + 
+                            usuario.slice(8);
+        
+        console.log(`✅ Usuario transformado: ${usuario} → ${transformado}`);
+        return transformado;
+    }
+    
+    // Si no cumple ninguna condición, retornar sin cambios
+    console.log(`ℹ️ Usuario sin transformación (formato no reconocido): ${usuario}`);
+    return usuario;
 }
 
 
@@ -4095,6 +4634,1099 @@ function limpiarFiltroUnidad() {
     alert('✅ Filtro eliminado - Mostrando todas las unidades');
 }
 
+
+	// ========================================
+// 📦 CARGAR INTERFAZ IPR
+// ========================================
+async function cargarInterfazIPR() {
+    const searchGrid = document.getElementById('searchGrid');
+    const resultsContainer = document.getElementById('searchResults');
+    
+    // Limpiar automáticamente registros viejos (30+ días)
+    await limpiarRegistrosViejosIPR();
+    
+    // Lista de causas de retiro
+    const causasRetiro = [
+        'Medidor con humedad/agua interna',
+        'Cambio de CAB a CAT',
+        'Casos por solicitud/ Campaña (SIGET)',
+        'Codigo de error',
+        'Irregularidad en el medidor',
+        'Medidor con dificultades de lectura',
+        'Medidor quebrado',
+        'Medidor quemado',
+        'Medidor con partes oxidadas',
+        'Medidor destruido',
+        'Fuera de limites de exactitud',
+        'Medidor con insectos/animales/partes de animales',
+        'Retiro/levantamiento de medidor',
+        'Provisionales/Abandonados',
+        'Testigos/En serie',
+        'Retiro por cambio de tecnología',
+        'Retiro por proyecto Subterraneo',
+        'Retiro de medidor con desperfecto identificado',
+        'Retiro de medidor por disposicion de seguridad',
+        'Por solicitud del cliente',
+        'Medidor incompatible/inadecuado con el servicio',
+        'Cambio a sistema blindado',
+        'MD parado no registra consumo',
+        'MD con pantalla apagada',
+        'MD con digitos borrosos',
+        'MD Dañado',
+        'MD con agua interna',
+        'MEDIDOR FUERA DE ESTANDAR',
+        'MD con pintura en pantalla',
+        'MD con pantalla amarilla',
+        'MD con borneras sobadas',
+        'MD Desprogramado',
+        'MD con bornera derretida'
+    ];
+    
+    searchGrid.innerHTML = `
+        <div style="background: #e8f5e9; padding: 20px; border-radius: 12px; border-left: 4px solid #4caf50;">
+            <h3 style="margin: 0 0 15px 0; color: #2e7d32;">📦 Registro de Retiro de Medidores</h3>
+            <p style="margin: 0; color: #666;">Ingrese el medidor para buscar información automática</p>
+        </div>
+        
+        <div style="background: white; padding: 20px; border-radius: 12px; margin-top: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+            
+            <div class="form-group">
+                <label style="font-weight: 600; color: #2d3748;">⚡ Medidor:</label>
+                <div style="display: grid; grid-template-columns: 1fr auto; gap: 10px;">
+                    <input type="text" id="ipr_medidor" placeholder="Ingrese número de medidor" 
+                           style="width: 100%; padding: 12px; border-radius: 8px; border: 2px solid #e1e5e9; font-size: 16px;">
+                    <button class="btn btn-secondary" onclick="buscarDatosMedidorIPR()" style="margin: 0; white-space: nowrap;">
+                        🔍 Buscar
+                    </button>
+                </div>
+            </div>
+            
+            <div id="datosAutocompletar" style="display: none; margin-top: 20px;">
+                
+                <div style="background: #f0f9ff; padding: 15px; border-radius: 8px; margin-bottom: 20px; border-left: 4px solid #2196f3;">
+                    <strong style="color: #1565c0;">✅ Datos encontrados - Verificar información</strong>
+                </div>
+                
+                <div class="form-group">
+                    <label style="font-weight: 600; color: #2d3748;">🏢 Unidad:</label>
+                    <input type="text" id="ipr_unidad" readonly 
+                           style="width: 100%; padding: 12px; border-radius: 8px; border: 2px solid #e1e5e9; background: #f5f5f5; font-size: 16px;">
+                </div>
+                
+                <div class="form-group">
+                    <label style="font-weight: 600; color: #2d3748;">📄 NIC (Cuenta Contrato):</label>
+                    <input type="text" id="ipr_nic" readonly 
+                           style="width: 100%; padding: 12px; border-radius: 8px; border: 2px solid #e1e5e9; background: #f5f5f5; font-size: 16px;">
+                </div>
+                
+                <div class="form-group">
+                    <label style="font-weight: 600; color: #2d3748;">📋 Forma:</label>
+                    <input type="text" id="ipr_forma" readonly 
+                           style="width: 100%; padding: 12px; border-radius: 8px; border: 2px solid #e1e5e9; background: #f5f5f5; font-size: 16px;">
+                </div>
+                
+                <div class="form-group">
+                    <label style="font-weight: 600; color: #2d3748;">🏷️ Marca y Tipo:</label>
+                    <input type="text" id="ipr_marca" readonly 
+                           style="width: 100%; padding: 12px; border-radius: 8px; border: 2px solid #e1e5e9; background: #f5f5f5; font-size: 16px;">
+                </div>
+                
+                <div class="form-group">
+                    <label style="font-weight: 600; color: #2d3748;">⚡ Voltaje:</label>
+                    <input type="text" id="ipr_voltaje" readonly 
+                           style="width: 100%; padding: 12px; border-radius: 8px; border: 2px solid #e1e5e9; background: #f5f5f5; font-size: 16px;">
+                </div>
+                
+                <hr style="margin: 30px 0; border: 1px solid #e2e8f0;">
+                
+                <div style="background: #fff3cd; padding: 15px; border-radius: 8px; margin-bottom: 20px; border-left: 4px solid #ffc107;">
+                    <strong style="color: #e65100;">📝 Completar información manualmente</strong>
+                </div>
+                
+                <div class="form-group">
+                    <label style="font-weight: 600; color: #2d3748;">📑 NUM. O/S: <span style="color: #d32f2f;">*</span></label>
+                    <input type="text" id="ipr_numos" placeholder="Ingrese número de orden de servicio" 
+                           style="width: 100%; padding: 12px; border-radius: 8px; border: 2px solid #e1e5e9; font-size: 16px;">
+                </div>
+                
+                <div class="form-group">
+                    <label style="font-weight: 600; color: #2d3748;">⚠️ Causa de Retiro: <span style="color: #d32f2f;">*</span></label>
+                    <select id="ipr_causa" style="width: 100%; padding: 12px; border-radius: 8px; border: 2px solid #e1e5e9; font-size: 16px;">
+                        <option value="">-- Seleccione una causa --</option>
+                        ${causasRetiro.map(causa => `<option value="${causa}">${causa}</option>`).join('')}
+                    </select>
+                </div>
+                
+                <div style="text-align: center; margin-top: 30px;">
+                    <button class="btn" onclick="guardarRegistroIPR()" style="font-size: 18px; padding: 18px 40px; background: linear-gradient(135deg, #4caf50 0%, #2e7d32 100%);">
+                        💾 Guardar Registro
+                    </button>
+                </div>
+                
+            </div>
+            
+        </div>
+    `;
+    
+    // Cargar registros existentes
+    cargarRegistrosIPR();
+}
+
+
+
+// ========================================
+// 🔍 BUSCAR DATOS DE MEDIDOR EN CONSULTA SUMINISTRO
+// ========================================
+async function buscarDatosMedidorIPR() {
+    const inputMedidor = document.getElementById('ipr_medidor');
+    if (!inputMedidor) {
+        console.error('❌ Input medidor no existe');
+        return;
+    }
+    
+    const medidor = inputMedidor.value.trim();
+    
+    if (!medidor) {
+        alert('⚠️ Por favor ingrese un número de medidor');
+        return;
+    }
+    
+    const datosDiv = document.getElementById('datosAutocompletar');
+    if (!datosDiv) {
+        console.error('❌ Contenedor datosAutocompletar no existe');
+        return;
+    }
+    
+    datosDiv.style.display = 'block';
+    datosDiv.innerHTML = '<div class="loading" style="display: block; margin: 20px auto;"></div><p style="text-align: center; color: #666;">Buscando medidor en Consulta Suministro...</p>';
+    
+    try {
+        console.log('🔍 Buscando medidor:', medidor);
+        
+        // 🔍 Buscar en consultas_servicios
+        const { data, error } = await supabaseClient
+            .from('consultas_servicios')
+            .select('CuentaContrato, Medidor, ComentarioGeneral')
+            .eq('Medidor', medidor)
+            .single();
+        
+        console.log('📊 Resultado búsqueda:', data, error);
+        
+        // ⚠️ MEDIDOR NO ENCONTRADO - MODO MANUAL
+        if (error || !data) {
+            console.log('⚠️ Medidor NO encontrado - Activando modo manual');
+            
+            const confirmar = confirm(
+                '⚠️ MODO MANUAL ACTIVADO\n\n' +
+                `El medidor "${medidor}" NO existe en Consulta Suministro.\n\n` +
+                'Deberás completar TODOS los campos manualmente.\n\n' +
+                '¿Deseas continuar?'
+            );
+            
+            if (!confirmar) {
+                datosDiv.style.display = 'none';
+                inputMedidor.value = '';
+                return;
+            }
+            
+            // Generar formulario MANUAL (todos los campos editables)
+            const unidadTransformada = transformarUsuarioAUnidad(currentUser.usuario);
+            datosDiv.innerHTML = generarFormularioIPRManual(unidadTransformada, medidor);
+            return;
+        }
+        
+        console.log('✅ Medidor encontrado en Consulta Suministro');
+        
+        // ✅ Validar si ya fue retirado
+        const { data: existente } = await supabaseClient
+            .from('retiro_medidores')
+            .select('nic, num_os, fecha')
+            .eq('medidor', medidor)
+            .order('fecha', { ascending: false })
+            .limit(1);
+        
+        if (existente && existente.length > 0) {
+            const registro = existente[0];
+            const fechaRetiro = new Date(registro.fecha + 'T00:00:00').toLocaleDateString('es-ES');
+            const confirmar = confirm(
+                `⚠️ ADVERTENCIA\n\n` +
+                `Este medidor YA fue retirado anteriormente:\n\n` +
+                `• Cuenta: ${registro.nic}\n` +
+                `• Fecha retiro: ${fechaRetiro}\n` +
+                `• NUM. O/S: ${registro.num_os}\n\n` +
+                `¿Desea registrarlo nuevamente?`
+            );
+            
+            if (!confirmar) {
+                datosDiv.style.display = 'none';
+                inputMedidor.value = '';
+                return;
+            }
+        }
+        
+        // 📦 Extraer datos del ComentarioGeneral
+        console.log('📝 ComentarioGeneral:', data.ComentarioGeneral);
+        const datosExtraidos = extraerDatosComentario(data.ComentarioGeneral);
+        console.log('📊 Datos extraídos:', datosExtraidos);
+        
+        // 🏢 Obtener unidad transformada
+        const unidadTransformada = transformarUsuarioAUnidad(currentUser.usuario);
+        console.log('🏢 Unidad transformada:', unidadTransformada);
+        
+        // 📝 Generar formulario AUTOMÁTICO (datos prellenados)
+        datosDiv.innerHTML = generarFormularioIPRAutomatico(unidadTransformada, data.CuentaContrato, datosExtraidos);
+        
+        console.log('✅ Formulario automático generado');
+        
+    } catch (err) {
+        console.error('❌ Error en búsqueda:', err);
+        datosDiv.innerHTML = `
+            <div style="background: #ffebee; padding: 15px; border-radius: 8px; border-left: 4px solid #f44336; margin-top: 20px;">
+                <strong style="color: #c62828;">❌ Error de conexión</strong><br>
+                <p style="margin: 10px 0 0 0; color: #666;">Intente nuevamente</p>
+            </div>`;
+    }
+}
+
+
+
+		// ========================================
+// 📋 GENERAR FORMULARIO IPR AUTOMÁTICO (Datos de BD)
+// ========================================
+function generarFormularioIPRAutomatico(unidad, nic, datosExtraidos) {
+    return `
+        <div style="background: #e8f5e9; padding: 15px; border-radius: 8px; margin-bottom: 20px; border-left: 4px solid #4caf50;">
+            <strong style="color: #2e7d32;">✅ Datos encontrados en Consulta Suministro</strong>
+        </div>
+        
+        <div class="form-group">
+            <label style="font-weight: 600; color: #2d3748;">🏢 Unidad:</label>
+            <input type="text" id="ipr_unidad" readonly value="${unidad}"
+                   style="width: 100%; padding: 12px; border-radius: 8px; border: 2px solid #e1e5e9; background: #f5f5f5; font-size: 16px;">
+        </div>
+        
+        <div class="form-group">
+            <label style="font-weight: 600; color: #2d3748;">📄 NIC (Cuenta Contrato):</label>
+            <input type="text" id="ipr_nic" readonly value="${nic || 'N/A'}"
+                   style="width: 100%; padding: 12px; border-radius: 8px; border: 2px solid #e1e5e9; background: #f5f5f5; font-size: 16px;">
+        </div>
+        
+        <div class="form-group">
+            <label style="font-weight: 600; color: #2d3748;">📋 Forma:</label>
+            <input type="text" id="ipr_forma" readonly value="${datosExtraidos.forma}"
+                   style="width: 100%; padding: 12px; border-radius: 8px; border: 2px solid #e1e5e9; background: #f5f5f5; font-size: 16px;">
+        </div>
+        
+        <div class="form-group">
+            <label style="font-weight: 600; color: #2d3748;">🏷️ Marca y Tipo:</label>
+            <input type="text" id="ipr_marca" readonly value="${datosExtraidos.marca}"
+                   style="width: 100%; padding: 12px; border-radius: 8px; border: 2px solid #e1e5e9; background: #f5f5f5; font-size: 16px;">
+        </div>
+        
+        <div class="form-group">
+            <label style="font-weight: 600; color: #2d3748;">⚡ Voltaje:</label>
+            <input type="text" id="ipr_voltaje" readonly value="${datosExtraidos.voltaje}"
+                   style="width: 100%; padding: 12px; border-radius: 8px; border: 2px solid #e1e5e9; background: #f5f5f5; font-size: 16px;">
+        </div>
+        
+        <hr style="margin: 30px 0; border: 1px solid #e2e8f0;">
+        
+        <div style="background: #fff3cd; padding: 15px; border-radius: 8px; margin-bottom: 20px; border-left: 4px solid #ffc107;">
+            <strong style="color: #e65100;">📝 Completar información manualmente</strong>
+        </div>
+        
+        <div class="form-group">
+            <label style="font-weight: 600; color: #2d3748;">📑 NUM. O/S: <span style="color: #d32f2f;">*</span></label>
+            <input type="text" id="ipr_numos" placeholder="Ingrese número de orden de servicio" 
+                   style="width: 100%; padding: 12px; border-radius: 8px; border: 2px solid #e1e5e9; font-size: 16px;">
+        </div>
+        
+        <div class="form-group">
+            <label style="font-weight: 600; color: #2d3748;">⚠️ Causa de Retiro: <span style="color: #d32f2f;">*</span></label>
+            <select id="ipr_causa" style="width: 100%; padding: 12px; border-radius: 8px; border: 2px solid #e1e5e9; font-size: 16px;">
+                <option value="">-- Seleccione una causa --</option>
+                ${generarOpcionesCausaRetiro()}
+            </select>
+        </div>
+        
+        <div style="text-align: center; margin-top: 30px;">
+            <button class="btn" onclick="guardarRegistroIPR()" style="font-size: 18px; padding: 18px 40px; background: linear-gradient(135deg, #4caf50 0%, #2e7d32 100%);">
+                💾 Guardar Registro
+            </button>
+        </div>
+    `;
+}
+
+
+	// ========================================
+// 📋 GENERAR FORMULARIO IPR MANUAL (Todos los campos editables)
+// ========================================
+function generarFormularioIPRManual(unidad, medidor) {
+    return `
+        <div style="background: #fff3cd; padding: 15px; border-radius: 8px; margin-bottom: 20px; border-left: 4px solid #ff9800;">
+            <strong style="color: #e65100;">⚠️ MODO MANUAL ACTIVADO</strong><br>
+            <p style="margin: 10px 0 0 0; color: #666;">El medidor "${medidor}" no está en Consulta Suministro. Complete TODOS los campos manualmente.</p>
+        </div>
+        
+        <div class="form-group">
+            <label style="font-weight: 600; color: #2d3748;">🏢 Unidad:</label>
+            <input type="text" id="ipr_unidad" readonly value="${unidad}"
+                   style="width: 100%; padding: 12px; border-radius: 8px; border: 2px solid #e1e5e9; background: #f5f5f5; font-size: 16px;">
+            <small style="color: #666; display: block; margin-top: 5px;">Unidad automática (usuario logueado)</small>
+        </div>
+        
+        <div class="form-group">
+            <label style="font-weight: 600; color: #2d3748;">📄 NIC (Cuenta Contrato): <span style="color: #d32f2f;">*</span></label>
+            <input type="text" id="ipr_nic" placeholder="Ingrese NIC (solo números)" 
+                   oninput="validarNICManual(this)" maxlength="15"
+                   style="width: 100%; padding: 12px; border-radius: 8px; border: 2px solid #e1e5e9; font-size: 16px;">
+            <small id="nic_validacion" style="display: block; margin-top: 5px;"></small>
+        </div>
+        
+        <div class="form-group">
+            <label style="font-weight: 600; color: #2d3748;">📋 Forma: <span style="color: #d32f2f;">*</span></label>
+            <input type="text" id="ipr_forma" placeholder="Ej: 233-15S" 
+                   style="width: 100%; padding: 12px; border-radius: 8px; border: 2px solid #e1e5e9; font-size: 16px;">
+        </div>
+        
+        <div class="form-group">
+            <label style="font-weight: 600; color: #2d3748;">🏷️ Marca y Tipo: <span style="color: #d32f2f;">*</span></label>
+            <input type="text" id="ipr_marca" placeholder="Ej: LANDIS+GYR E650 S4X RXR" 
+                   style="width: 100%; padding: 12px; border-radius: 8px; border: 2px solid #e1e5e9; font-size: 16px;">
+        </div>
+        
+        <div class="form-group">
+            <label style="font-weight: 600; color: #2d3748;">⚡ Voltaje: <span style="color: #d32f2f;">*</span></label>
+            <input type="text" id="ipr_voltaje" placeholder="Ej: 120/480V" 
+                   style="width: 100%; padding: 12px; border-radius: 8px; border: 2px solid #e1e5e9; font-size: 16px;">
+        </div>
+        
+        <hr style="margin: 30px 0; border: 1px solid #e2e8f0;">
+        
+        <div class="form-group">
+            <label style="font-weight: 600; color: #2d3748;">📑 NUM. O/S: <span style="color: #d32f2f;">*</span></label>
+            <input type="text" id="ipr_numos" placeholder="Ingrese número de orden de servicio" 
+                   style="width: 100%; padding: 12px; border-radius: 8px; border: 2px solid #e1e5e9; font-size: 16px;">
+        </div>
+        
+        <div class="form-group">
+            <label style="font-weight: 600; color: #2d3748;">⚠️ Causa de Retiro: <span style="color: #d32f2f;">*</span></label>
+            <select id="ipr_causa" style="width: 100%; padding: 12px; border-radius: 8px; border: 2px solid #e1e5e9; font-size: 16px;">
+                <option value="">-- Seleccione una causa --</option>
+                ${generarOpcionesCausaRetiro()}
+            </select>
+        </div>
+        
+        <div style="text-align: center; margin-top: 30px;">
+            <button class="btn" onclick="guardarRegistroIPR()" style="font-size: 18px; padding: 18px 40px; background: linear-gradient(135deg, #ff9800 0%, #f57c00 100%);">
+                💾 Guardar Registro (Modo Manual)
+            </button>
+        </div>
+    `;
+}
+
+// ========================================
+// ✅ VALIDAR NIC MANUAL (Solo números + Validar en BD)
+// ========================================
+async function validarNICManual(input) {
+    const valor = input.value;
+    const validacion = document.getElementById('nic_validacion');
+    
+    // Permitir solo números
+    input.value = valor.replace(/[^0-9]/g, '');
+    
+    if (input.value.length === 0) {
+        validacion.innerHTML = '';
+        validacion.style.color = '#666';
+        return;
+    }
+    
+    // Validar longitud mínima (12 dígitos)
+    if (input.value.length < 12) {
+        validacion.innerHTML = '⚠️ El NIC debe tener al menos 12 dígitos';
+        validacion.style.color = '#ff9800';
+        return;
+    }
+    
+    // Validar contra Consulta Suministro
+    try {
+        const { data, error } = await supabaseClient
+            .from('consultas_servicios')
+            .select('CuentaContrato')
+            .eq('CuentaContrato', input.value)
+            .single();
+        
+        if (data) {
+            validacion.innerHTML = '✅ NIC válido (existe en sistema)';
+            validacion.style.color = '#4caf50';
+        } else {
+            validacion.innerHTML = '⚠️ NIC no encontrado en sistema (se guardará de todas formas)';
+            validacion.style.color = '#ff9800';
+        }
+    } catch (err) {
+        validacion.innerHTML = '⚠️ Error validando NIC';
+        validacion.style.color = '#f44336';
+    }
+}
+
+
+
+
+	// ========================================
+// 📋 GENERAR FORMULARIO IPR CON DATOS
+// ========================================
+function generarFormularioIPRConDatos(unidad, nic, datosExtraidos) {
+    return `
+        <div style="background: #e8f5e9; padding: 15px; border-radius: 8px; margin-bottom: 20px; border-left: 4px solid #4caf50;">
+            <strong style="color: #2e7d32;">✅ Datos encontrados - Verificar información</strong>
+        </div>
+        
+        <div class="form-group">
+            <label style="font-weight: 600; color: #2d3748;">🏢 Unidad:</label>
+            <input type="text" id="ipr_unidad" readonly value="${unidad}"
+                   style="width: 100%; padding: 12px; border-radius: 8px; border: 2px solid #e1e5e9; background: #f5f5f5; font-size: 16px;">
+        </div>
+        
+        <div class="form-group">
+            <label style="font-weight: 600; color: #2d3748;">📄 NIC (Cuenta Contrato):</label>
+            <input type="text" id="ipr_nic" readonly value="${nic || 'N/A'}"
+                   style="width: 100%; padding: 12px; border-radius: 8px; border: 2px solid #e1e5e9; background: #f5f5f5; font-size: 16px;">
+        </div>
+        
+        <div class="form-group">
+            <label style="font-weight: 600; color: #2d3748;">📋 Forma:</label>
+            <input type="text" id="ipr_forma" readonly value="${datosExtraidos.forma}"
+                   style="width: 100%; padding: 12px; border-radius: 8px; border: 2px solid #e1e5e9; background: #f5f5f5; font-size: 16px;">
+        </div>
+        
+        <div class="form-group">
+            <label style="font-weight: 600; color: #2d3748;">🏷️ Marca y Tipo:</label>
+            <input type="text" id="ipr_marca" readonly value="${datosExtraidos.marca}"
+                   style="width: 100%; padding: 12px; border-radius: 8px; border: 2px solid #e1e5e9; background: #f5f5f5; font-size: 16px;">
+        </div>
+        
+        <div class="form-group">
+            <label style="font-weight: 600; color: #2d3748;">⚡ Voltaje:</label>
+            <input type="text" id="ipr_voltaje" readonly value="${datosExtraidos.voltaje}"
+                   style="width: 100%; padding: 12px; border-radius: 8px; border: 2px solid #e1e5e9; background: #f5f5f5; font-size: 16px;">
+        </div>
+        
+        <hr style="margin: 30px 0; border: 1px solid #e2e8f0;">
+        
+        <div style="background: #fff3cd; padding: 15px; border-radius: 8px; margin-bottom: 20px; border-left: 4px solid #ffc107;">
+            <strong style="color: #e65100;">📝 Completar información manualmente</strong>
+        </div>
+        
+        <div class="form-group">
+            <label style="font-weight: 600; color: #2d3748;">📑 NUM. O/S: <span style="color: #d32f2f;">*</span></label>
+            <input type="text" id="ipr_numos" placeholder="Ingrese número de orden de servicio" 
+                   style="width: 100%; padding: 12px; border-radius: 8px; border: 2px solid #e1e5e9; font-size: 16px;">
+        </div>
+        
+        <div class="form-group">
+            <label style="font-weight: 600; color: #2d3748;">⚠️ Causa de Retiro: <span style="color: #d32f2f;">*</span></label>
+            <select id="ipr_causa" style="width: 100%; padding: 12px; border-radius: 8px; border: 2px solid #e1e5e9; font-size: 16px;">
+                <option value="">-- Seleccione una causa --</option>
+                ${generarOpcionesCausaRetiro()}
+            </select>
+        </div>
+        
+        <div style="text-align: center; margin-top: 30px;">
+            <button class="btn" onclick="guardarRegistroIPR()" style="font-size: 18px; padding: 18px 40px; background: linear-gradient(135deg, #4caf50 0%, #2e7d32 100%);">
+                💾 Guardar Registro
+            </button>
+        </div>
+    `;
+}
+
+
+	// ========================================
+// 📋 GENERAR OPCIONES DE CAUSA DE RETIRO
+// ========================================
+function generarOpcionesCausaRetiro() {
+    const causas = [
+        'Medidor con humedad/agua interna',
+        'Cambio de CAB a CAT',
+        'Casos por solicitud/ Campaña (SIGET)',
+        'Codigo de error',
+        'Irregularidad en el medidor',
+        'Medidor con dificultades de lectura',
+        'Medidor quebrado',
+        'Medidor quemado',
+        'Medidor con partes oxidadas',
+        'Medidor destruido',
+        'Fuera de limites de exactitud',
+        'Medidor con insectos/animales/partes de animales',
+        'Retiro/levantamiento de medidor',
+        'Provisionales/Abandonados',
+        'Testigos/En serie',
+        'Retiro por cambio de tecnología',
+        'Retiro por proyecto Subterraneo',
+        'Retiro de medidor con desperfecto identificado',
+        'Retiro de medidor por disposicion de seguridad',
+        'Por solicitud del cliente',
+        'Medidor incompatible/inadecuado con el servicio',
+        'Cambio a sistema blindado',
+        'MD parado no registra consumo',
+        'MD con pantalla apagada',
+        'MD con digitos borrosos',
+        'MD Dañado',
+        'MD con agua interna',
+        'MEDIDOR FUERA DE ESTANDAR',
+        'MD con pintura en pantalla',
+        'MD con pantalla amarilla',
+        'MD con borneras sobadas',
+        'MD Desprogramado',
+        'MD con bornera derretida'
+    ];
+    
+    return causas.map(causa => `<option value="${causa}">${causa}</option>`).join('');
+}
+
+	
+
+
+	// ========================================
+// 📊 EXTRAER DATOS DEL COMENTARIO GENERAL
+// ========================================
+// ========================================
+// 📊 EXTRAER DATOS DEL COMENTARIO GENERAL
+// ========================================
+function extraerDatosComentario(comentario) {
+    console.log('📝 Procesando comentario:', comentario);
+    
+    const resultado = {
+        forma: 'N/A',
+        marca: 'N/A',
+        voltaje: 'N/A'
+    };
+    
+    if (!comentario) {
+        console.log('⚠️ Comentario vacío');
+        return resultado;
+    }
+    
+    // 🔍 Buscar Forma: "Forma 233-15S ." o "Forma: 233-15S"
+    const matchForma = comentario.match(/Forma[:\s]+([^\n\r.]+)/i);
+    if (matchForma) {
+        resultado.forma = matchForma[1].trim();
+        console.log('✅ Forma encontrada:', resultado.forma);
+    } else {
+        console.log('⚠️ Forma NO encontrada');
+    }
+    
+    // 🔍 Buscar Marca y Tipo: "Medidor: 97208817 - LANDIS+GYR E650 S4X RXR ."
+    const matchMarca = comentario.match(/Medidor[:\s]+\d+\s*-\s*([^\n\r.]+)/i);
+    if (matchMarca) {
+        resultado.marca = matchMarca[1].trim();
+        console.log('✅ Marca encontrada:', resultado.marca);
+    } else {
+        console.log('⚠️ Marca NO encontrada');
+    }
+    
+    // 🔍 Buscar Voltaje: "Tension 120/480V ." o "Tension: 120/480V"
+    const matchVoltaje = comentario.match(/Tension[:\s]+([^\n\r.]+)/i);
+    if (matchVoltaje) {
+        resultado.voltaje = matchVoltaje[1].trim();
+        console.log('✅ Voltaje encontrado:', resultado.voltaje);
+    } else {
+        console.log('⚠️ Voltaje NO encontrado');
+    }
+    
+    console.log('📊 Resultado final:', resultado);
+    return resultado;
+}
+	// ========================================
+// 💾 GUARDAR REGISTRO IPR
+// ========================================
+async function guardarRegistroIPR() {
+    // Validar campos obligatorios
+    const medidor = document.getElementById('ipr_medidor').value.trim();
+    const nic = document.getElementById('ipr_nic').value.trim();
+    const forma = document.getElementById('ipr_forma').value.trim();
+    const marca = document.getElementById('ipr_marca').value.trim();
+    const voltaje = document.getElementById('ipr_voltaje').value.trim();
+    const numOS = document.getElementById('ipr_numos').value.trim();
+    const causa = document.getElementById('ipr_causa').value;
+    
+    // 🆕 Validación completa (todos los campos obligatorios)
+    if (!medidor || !nic || !forma || !marca || !voltaje || !numOS || !causa) {
+        alert('⚠️ Por favor complete TODOS los campos obligatorios:\n\n• Medidor\n• NIC\n• Forma\n• Marca/Tipo\n• Voltaje\n• NUM. O/S\n• Causa de Retiro');
+        return;
+    }
+    
+    // 🆕 Validar que NIC sea solo números
+    if (!/^\d+$/.test(nic)) {
+        alert('⚠️ El NIC debe contener solo números');
+        return;
+    }
+    
+    // Obtener unidad
+    const unidad = document.getElementById('ipr_unidad').value;
+    
+    // Confirmación
+    const confirmar = confirm(
+        `¿Guardar registro de retiro?\n\n` +
+        `📦 Medidor: ${medidor}\n` +
+        `📄 NIC: ${nic}\n` +
+        `📋 Forma: ${forma}\n` +
+        `🏷️ Marca: ${marca}\n` +
+        `⚡ Voltaje: ${voltaje}\n` +
+        `📑 NUM. O/S: ${numOS}\n` +
+        `⚠️ Causa: ${causa}\n\n` +
+        `✅ SÍ - Guardar\n` +
+        `❌ NO - Cancelar`
+    );
+    
+    if (!confirmar) return;
+    
+    try {
+        // 💾 Guardar en Supabase
+        const { error } = await supabaseClient
+            .from('retiro_medidores')
+            .insert({
+                unidad: unidad,
+                nic: nic,
+                num_os: numOS,
+                medidor: medidor,
+                forma: forma,
+                marca: marca,
+                voltaje: voltaje,
+                causa_retiro: causa,
+                fecha: new Date().toISOString().split('T')[0],
+                usuario_registro: currentUser.usuario
+            });
+        
+        if (error) {
+            alert('❌ Error al guardar: ' + error.message);
+            return;
+        }
+        
+        // ✅ Éxito
+        alert('✅ Registro guardado correctamente');
+        
+        // Limpiar formulario y recargar
+        document.getElementById('ipr_medidor').value = '';
+        document.getElementById('datosAutocompletar').style.display = 'none';
+        cargarRegistrosIPR(); // Recargar lista
+        
+    } catch (err) {
+        console.error('Error guardando registro:', err);
+        alert('❌ Error de conexión. Intente nuevamente.');
+    }
+}
+
+
+	
+	// ========================================
+// 🗑️ LIMPIAR REGISTROS VIEJOS (30+ DÍAS)
+// ========================================
+async function limpiarRegistrosViejosIPR() {
+    try {
+        const fechaLimite = new Date();
+        fechaLimite.setDate(fechaLimite.getDate() - 30);
+        const fechaLimiteStr = fechaLimite.toISOString().split('T')[0];
+        
+        const { error } = await supabaseClient
+            .from('retiro_medidores')
+            .delete()
+            .lt('fecha', fechaLimiteStr);
+        
+        if (error) {
+            console.error('Error limpiando registros viejos:', error);
+        } else {
+            console.log('🗑️ Registros viejos limpiados (30+ días)');
+        }
+    } catch (err) {
+        console.error('Error en limpieza automática:', err);
+    }
+}
+
+
+	// ========================================
+// 📋 CARGAR REGISTROS IPR
+// ========================================
+async function cargarRegistrosIPR() {
+    const resultsContainer = document.getElementById('searchResults');
+    
+    resultsContainer.innerHTML = '<div class="loading" style="display: block; margin: 20px auto;"></div>';
+    
+    try {
+        let query = supabaseClient
+            .from('retiro_medidores')
+            .select('*')
+            .order('fecha', { ascending: false });
+        
+        // 🔒 Filtrar por unidad según rol
+        if (currentUser.rol !== 'Administrador' && 
+            currentUser.rol !== 'Supervisor' && 
+            currentUser.rol !== 'Bodega') {
+            const unidadUsuario = transformarUsuarioAUnidad(currentUser.usuario);
+            query = query.eq('unidad', unidadUsuario);
+        }
+        
+        const { data, error } = await query;
+        
+        if (error) {
+            resultsContainer.innerHTML = '<div class="result-card">❌ Error al cargar registros</div>';
+            return;
+        }
+        
+        if (!data || data.length === 0) {
+            resultsContainer.innerHTML = `
+                <div class="result-card" style="background: #f0f9ff; border: 2px solid #2196f3;">
+                    <div class="result-header">ℹ️ Sin registros</div>
+                    <p style="text-align: center; color: #666;">No hay registros de retiro de medidores</p>
+                </div>`;
+            return;
+        }
+        
+        // Guardar datos globalmente
+        window.registrosIPR = data;
+        
+        // Generar interfaz
+        mostrarRegistrosIPR(data);
+        
+    } catch (err) {
+        console.error('Error cargando registros IPR:', err);
+        resultsContainer.innerHTML = '<div class="result-card">❌ Error de conexión</div>';
+    }
+}
+
+
+	// ========================================
+// 📊 MOSTRAR REGISTROS IPR CON FILTROS
+// ========================================
+function mostrarRegistrosIPR(registros) {
+    const resultsContainer = document.getElementById('searchResults');
+    
+    // Obtener unidades y fechas únicas para filtros
+    const unidadesUnicas = [...new Set(registros.map(r => r.unidad))].sort();
+    const fechasUnicas = [...new Set(registros.map(r => r.fecha))].sort().reverse();
+    
+    // Determinar si mostrar filtro de unidad
+    const mostrarFiltroUnidad = (currentUser.rol === 'Administrador' || 
+                                 currentUser.rol === 'Supervisor' || 
+                                 currentUser.rol === 'Bodega');
+    
+    let html = `
+        <div class="result-card" style="background: #f0f9ff; border: 2px solid #2196f3;">
+            <div class="result-header">📋 Registros de Retiro de Medidores (${registros.length})</div>
+            
+            <div style="background: white; padding: 20px; border-radius: 10px; margin: 20px 0;">
+                <strong style="font-size: 16px; color: #2d3748;">🔍 Filtros</strong>
+                
+                <div style="display: grid; grid-template-columns: ${mostrarFiltroUnidad ? '1fr 1fr' : '1fr'}; gap: 15px; margin-top: 15px;">`;
+    
+    // Filtro de unidad (solo para Admin/Supervisor/Bodega)
+    if (mostrarFiltroUnidad) {
+        html += `
+            <div>
+                <label style="display: block; margin-bottom: 8px; font-weight: 600; color: #4a5568;">Filtrar por Unidad:</label>
+                <select id="filtro_unidad_ipr" onchange="aplicarFiltrosIPR()" style="width: 100%; padding: 10px; border-radius: 8px; border: 2px solid #e1e5e9;">
+                    <option value="">-- Todas las unidades --</option>
+                    ${unidadesUnicas.map(u => `<option value="${u}">${u}</option>`).join('')}
+                </select>
+            </div>`;
+    }
+    
+    // Filtro de fecha
+    html += `
+            <div>
+                <label style="display: block; margin-bottom: 8px; font-weight: 600; color: #4a5568;">Filtrar por Fecha:</label>
+                <select id="filtro_fecha_ipr" onchange="aplicarFiltrosIPR()" style="width: 100%; padding: 10px; border-radius: 8px; border: 2px solid #e1e5e9;">
+                    <option value="">-- Todas las fechas --</option>
+                    ${fechasUnicas.map(f => {
+                        const fechaFormateada = new Date(f + 'T00:00:00').toLocaleDateString('es-ES');
+                        return `<option value="${f}">${fechaFormateada}</option>`;
+                    }).join('')}
+                </select>
+            </div>
+        </div>
+        
+        <div style="display: flex; gap: 10px; margin-top: 15px; flex-wrap: wrap;">
+            <button class="btn btn-secondary" onclick="limpiarFiltrosIPR()" style="background: linear-gradient(135deg, #ff6b6b 0%, #ee5a6f 100%);">
+                🗑️ Limpiar Filtros
+            </button>
+            <button class="btn btn-secondary" onclick="exportarExcelIPR()" style="background: linear-gradient(135deg, #4caf50 0%, #2e7d32 100%);">
+                📥 Exportar Excel
+            </button>
+        </div>
+        
+    </div>
+</div>`;
+    
+    // Tabla de registros
+    html += generarTablaRegistrosIPR(registros);
+    
+    resultsContainer.innerHTML = html;
+}
+
+	// ========================================
+// 📊 GENERAR TABLA DE REGISTROS IPR
+// ========================================
+function generarTablaRegistrosIPR(registros) {
+    if (!registros || registros.length === 0) {
+        return `<div class="result-card" style="background: #fff3cd;">
+                    <p style="text-align: center; color: #666;">No hay registros que coincidan con los filtros</p>
+                </div>`;
+    }
+    
+    // Paginación: 20 registros por página
+    const registrosPorPagina = 20;
+    const paginaActual = window.paginaActualIPR || 1;
+    const totalPaginas = Math.ceil(registros.length / registrosPorPagina);
+    
+    const inicio = (paginaActual - 1) * registrosPorPagina;
+    const fin = inicio + registrosPorPagina;
+    const registrosPagina = registros.slice(inicio, fin);
+    
+    let html = `
+        <div class="result-card" style="background: white;">
+            <div style="overflow-x: auto;">
+                <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
+                    <thead>
+                        <tr style="background: linear-gradient(135deg, #4caf50 0%, #2e7d32 100%); color: white;">
+                            <th style="padding: 12px; text-align: left; white-space: nowrap;">#</th>
+                            <th style="padding: 12px; text-align: left; white-space: nowrap;">Fecha</th>
+                            <th style="padding: 12px; text-align: left; white-space: nowrap;">Unidad</th>
+                            <th style="padding: 12px; text-align: left; white-space: nowrap;">NIC</th>
+                            <th style="padding: 12px; text-align: left; white-space: nowrap;">NUM. O/S</th>
+                            <th style="padding: 12px; text-align: left; white-space: nowrap;">Medidor</th>
+                            <th style="padding: 12px; text-align: left; white-space: nowrap;">Forma</th>
+                            <th style="padding: 12px; text-align: left; white-space: nowrap;">Marca/Tipo</th>
+                            <th style="padding: 12px; text-align: left; white-space: nowrap;">Voltaje</th>
+                            <th style="padding: 12px; text-align: left; white-space: nowrap;">Causa de Retiro</th>
+                            <th style="padding: 12px; text-align: left; white-space: nowrap;">Usuario</th>
+                        </tr>
+                    </thead>
+                    <tbody>`;
+    
+    registrosPagina.forEach((registro, idx) => {
+        const bgColor = idx % 2 === 0 ? '#f8f9fa' : 'white';
+        const numeroGlobal = inicio + idx + 1;
+        const fechaFormateada = new Date(registro.fecha + 'T00:00:00').toLocaleDateString('es-ES');
+        
+        html += `
+            <tr style="background: ${bgColor}; border-bottom: 1px solid #e2e8f0;">
+                <td style="padding: 10px; font-weight: 600;">${numeroGlobal}</td>
+                <td style="padding: 10px;">${fechaFormateada}</td>
+                <td style="padding: 10px;">${registro.unidad || 'N/A'}</td>
+                <td style="padding: 10px;">${registro.nic || 'N/A'}</td>
+                <td style="padding: 10px; font-weight: 600; color: #1976d2;">${registro.num_os}</td>
+                <td style="padding: 10px; font-weight: 600;">${registro.medidor}</td>
+                <td style="padding: 10px;">${registro.forma || 'N/A'}</td>
+                <td style="padding: 10px; max-width: 200px; overflow: hidden; text-overflow: ellipsis;" title="${registro.marca || 'N/A'}">${registro.marca || 'N/A'}</td>
+                <td style="padding: 10px;">${registro.voltaje || 'N/A'}</td>
+                <td style="padding: 10px; max-width: 250px; overflow: hidden; text-overflow: ellipsis;" title="${registro.causa_retiro}">${registro.causa_retiro}</td>
+                <td style="padding: 10px;">${registro.usuario_registro}</td>
+            </tr>`;
+    });
+    
+    html += `
+                    </tbody>
+                </table>
+            </div>`;
+    
+    // Controles de paginación
+    if (totalPaginas > 1) {
+        html += `
+            <div style="display: flex; justify-content: center; align-items: center; gap: 10px; margin-top: 20px; padding: 15px; border-top: 2px solid #e2e8f0;">
+                <button class="btn btn-secondary" onclick="cambiarPaginaIPR(${paginaActual - 1})" 
+                        ${paginaActual === 1 ? 'disabled style="opacity: 0.5; cursor: not-allowed;"' : ''}>
+                    ← Anterior
+                </button>
+                <span style="font-weight: 600; color: #2d3748;">
+                    Página ${paginaActual} de ${totalPaginas}
+                </span>
+                <button class="btn btn-secondary" onclick="cambiarPaginaIPR(${paginaActual + 1})" 
+                        ${paginaActual === totalPaginas ? 'disabled style="opacity: 0.5; cursor: not-allowed;"' : ''}>
+                    Siguiente →
+                </button>
+            </div>`;
+    }
+    
+    html += `</div>`;
+    
+    return html;
+}
+
+
+	// ========================================
+// 🔄 APLICAR FILTROS IPR
+// ========================================
+// ========================================
+// 🔄 APLICAR FILTROS IPR
+// ========================================
+function aplicarFiltrosIPR() {
+    if (!window.registrosIPR) return;
+    
+    let registrosFiltrados = [...window.registrosIPR];
+    
+    // Filtro por unidad
+    const filtroUnidad = document.getElementById('filtro_unidad_ipr');
+    if (filtroUnidad && filtroUnidad.value) {
+        registrosFiltrados = registrosFiltrados.filter(r => r.unidad === filtroUnidad.value);
+    }
+    
+    // Filtro por fecha
+    const filtroFecha = document.getElementById('filtro_fecha_ipr');
+    if (filtroFecha && filtroFecha.value) {
+        registrosFiltrados = registrosFiltrados.filter(r => r.fecha === filtroFecha.value);
+    }
+    
+    // 🆕 Filtro por medidor (busca en TODOS los registros)
+    const filtroMedidor = document.getElementById('filtro_medidor_ipr');
+    if (filtroMedidor && filtroMedidor.value.trim()) {
+        const busqueda = filtroMedidor.value.trim().toLowerCase();
+        registrosFiltrados = registrosFiltrados.filter(r => 
+            r.medidor && r.medidor.toLowerCase().includes(busqueda)
+        );
+    }
+    
+    // Resetear paginación
+    window.paginaActualIPR = 1;
+    
+    // Actualizar solo la tabla
+    const resultsContainer = document.getElementById('searchResults');
+    const tablaHTML = generarTablaRegistrosIPR(registrosFiltrados);
+    const tablaExistente = resultsContainer.querySelector('.result-card:last-child');
+    if (tablaExistente) {
+        tablaExistente.outerHTML = tablaHTML;
+    }
+}
+
+
+
+
+// ========================================
+// 🗑️ LIMPIAR FILTROS IPR
+// ========================================
+function limpiarFiltrosIPR() {
+    const filtroUnidad = document.getElementById('filtro_unidad_ipr');
+    const filtroFecha = document.getElementById('filtro_fecha_ipr');
+    const filtroMedidor = document.getElementById('filtro_medidor_ipr');
+    
+    if (filtroUnidad) filtroUnidad.value = '';
+    if (filtroFecha) filtroFecha.value = '';
+    if (filtroMedidor) filtroMedidor.value = '';
+    
+    window.paginaActualIPR = 1;
+    
+    mostrarRegistrosIPR(window.registrosIPR);
+}
+
+
+
+// ========================================
+// 📄 CAMBIAR PÁGINA IPR
+// ========================================
+function cambiarPaginaIPR(nuevaPagina) {
+    window.paginaActualIPR = nuevaPagina;
+    aplicarFiltrosIPR();
+}
+
+	// ========================================
+// 📥 EXPORTAR EXCEL IPR
+// ========================================
+function exportarExcelIPR() {
+    if (!window.registrosIPR || window.registrosIPR.length === 0) {
+        alert('⚠️ No hay registros para exportar');
+        return;
+    }
+    
+    // Obtener registros filtrados actuales
+    let registrosExportar = [...window.registrosIPR];
+    
+    // Aplicar filtros si existen
+    const filtroUnidad = document.getElementById('filtro_unidad_ipr');
+    const filtroFecha = document.getElementById('filtro_fecha_ipr');
+    
+    if (filtroUnidad && filtroUnidad.value) {
+        registrosExportar = registrosExportar.filter(r => r.unidad === filtroUnidad.value);
+    }
+    
+    if (filtroFecha && filtroFecha.value) {
+        registrosExportar = registrosExportar.filter(r => r.fecha === filtroFecha.value);
+    }
+    
+    if (registrosExportar.length === 0) {
+        alert('⚠️ No hay registros que coincidan con los filtros aplicados');
+        return;
+    }
+    
+    // Confirmar exportación
+    const confirmar = confirm(
+        `📥 Exportar registros a Excel\n\n` +
+        `Total de registros: ${registrosExportar.length}\n\n` +
+        `¿Continuar?`
+    );
+    
+    if (!confirmar) return;
+    
+    try {
+        // Preparar datos para Excel
+        const datosExcel = registrosExportar.map(registro => ({
+            'Fecha': new Date(registro.fecha + 'T00:00:00').toLocaleDateString('es-ES'),
+            'Unidad': registro.unidad || 'N/A',
+            'NIC': registro.nic || 'N/A',
+            'NUM. O/S': registro.num_os,
+            'Medidor': registro.medidor,
+            'Forma': registro.forma || 'N/A',
+            'Marca/Tipo': registro.marca || 'N/A',
+            'Voltaje': registro.voltaje || 'N/A',
+            'Causa de Retiro': registro.causa_retiro,
+            'Usuario Registro': registro.usuario_registro
+        }));
+        
+        // Crear libro de Excel
+        const wb = XLSX.utils.book_new();
+        const ws = XLSX.utils.json_to_sheet(datosExcel);
+        
+        // Ajustar ancho de columnas
+        const columnWidths = [
+            { wch: 12 },  // Fecha
+            { wch: 15 },  // Unidad
+            { wch: 15 },  // NIC
+            { wch: 12 },  // NUM. O/S
+            { wch: 12 },  // Medidor
+            { wch: 12 },  // Forma
+            { wch: 30 },  // Marca/Tipo
+            { wch: 12 },  // Voltaje
+            { wch: 40 },  // Causa de Retiro
+            { wch: 15 }   // Usuario Registro
+        ];
+        ws['!cols'] = columnWidths;
+        
+        // Agregar hoja al libro
+        XLSX.utils.book_append_sheet(wb, ws, 'Retiro Medidores');
+        
+        // Generar nombre de archivo
+        const fechaHoy = new Date().toISOString().split('T')[0];
+        let nombreArchivo = `IPR_${fechaHoy}`;
+        
+        if (filtroUnidad && filtroUnidad.value) {
+            nombreArchivo += `_${filtroUnidad.value}`;
+        }
+        
+        if (filtroFecha && filtroFecha.value) {
+            nombreArchivo += `_${filtroFecha.value}`;
+        }
+        
+        nombreArchivo += '.xlsx';
+        
+        // Descargar archivo
+        XLSX.writeFile(wb, nombreArchivo);
+        
+        console.log(`✅ Excel exportado: ${nombreArchivo}`);
+        
+    } catch (err) {
+        console.error('Error exportando Excel:', err);
+        alert('❌ Error al generar Excel. Intente nuevamente.');
+    }
+}
+
+	
 
 
 	// ========================================
@@ -6006,18 +7638,30 @@ function verificarDatosOffline() {
 
 // === FUNCIÓN PARA SELECCIONAR TABLA ===
 function seleccionarTabla(tableName) {
+    // Validar acceso para Lectura
     if (currentUser.rol === 'Lectura' && tableName !== 'consultas_servicios') {
         alert('Su rol solo permite acceso a Consultas de Servicios');
         return;
     }
+    
     // Validar acceso a Detalle OS
-if (tableName === 'detalle_os') {
-    if (currentUser.rol !== 'Administrador' && currentUser.rol !== 'Supervisor') {
-        alert('⚠️ Solo Administradores y Supervisores pueden acceder a Detalle OS');
-        return;
+    if (tableName === 'detalle_os') {
+        if (currentUser.rol !== 'Administrador' && currentUser.rol !== 'Supervisor') {
+            alert('⚠️ Solo Administradores y Supervisores pueden acceder a Detalle OS');
+            return;
+        }
     }
-}
+    
+    // 🆕 Validar acceso a IPR
+    if (tableName === 'retiro_medidores') {
+        const rolesPermitidos = ['Administrador', 'Supervisor', 'Bodega', 'ATTF', 'Contratista', 'Consulta'];
+        if (!rolesPermitidos.includes(currentUser.rol)) {
+            alert('⚠️ Su rol no tiene acceso al módulo IPR');
+            return;
+        }
+    }
 
+    // Seleccionar tabla y mostrar interfaz
     selectedTable = tableName; 
     const config = tableConfigs[tableName];
     document.getElementById('searchTitle').innerHTML = `${config.icon} ${config.title}`;
@@ -6025,6 +7669,7 @@ if (tableName === 'detalle_os') {
     document.getElementById('tableSelectionSection').style.display = 'none';
     document.getElementById('searchSection').style.display = 'block';
 }
+
 
 // === INICIALIZACIÓN AL CARGAR LA PÁGINA ===
 document.addEventListener('DOMContentLoaded', function() {
