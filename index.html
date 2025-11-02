@@ -4002,7 +4002,10 @@ function transformarUsuarioAUnidad(usuario) {
         'admin',
         'jmec6885',
         'bodega001',
+	'bodega002',
         'bodega',
+	'DonHector',
+	'DonRivas',
         'supervisor'
     ];
     
@@ -5624,9 +5627,39 @@ function limpiarFiltrosIPR() {
 // ========================================
 function cambiarPaginaIPR(nuevaPagina) {
     window.paginaActualIPR = nuevaPagina;
-    aplicarFiltrosIPR();
+    
+    // Obtener registros actuales (con filtros aplicados si existen)
+    let registrosMostrar = [...window.registrosIPR];
+    
+    // Aplicar filtros si existen
+    const filtroUnidad = document.getElementById('filtro_unidad_ipr');
+    const filtroFecha = document.getElementById('filtro_fecha_ipr');
+    const filtroMedidor = document.getElementById('filtro_medidor_ipr');
+    
+    if (filtroUnidad && filtroUnidad.value) {
+        registrosMostrar = registrosMostrar.filter(r => r.unidad === filtroUnidad.value);
+    }
+    
+    if (filtroFecha && filtroFecha.value) {
+        registrosMostrar = registrosMostrar.filter(r => r.fecha === filtroFecha.value);
+    }
+    
+    if (filtroMedidor && filtroMedidor.value.trim()) {
+        const busqueda = filtroMedidor.value.trim().toLowerCase();
+        registrosMostrar = registrosMostrar.filter(r => 
+            r.medidor && r.medidor.toLowerCase().includes(busqueda)
+        );
+    }
+    
+    // Actualizar solo la tabla
+    const resultsContainer = document.getElementById('searchResults');
+    const tablaHTML = generarTablaRegistrosIPR(registrosMostrar);
+    const tablaExistente = resultsContainer.querySelector('.result-card:last-child');
+    
+    if (tablaExistente) {
+        tablaExistente.outerHTML = tablaHTML;
+    }
 }
-
 	// ========================================
 // 📥 EXPORTAR EXCEL IPR
 // ========================================
