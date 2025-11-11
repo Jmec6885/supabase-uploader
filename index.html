@@ -4904,6 +4904,147 @@ async function guardarRegistroIPR() {
 }
 
 
+	function procesarMedidorUnico(data) {
+    console.log('✅ Medidor único encontrado');
+    
+    // Validar si ya fue retirado
+    verificarRetiroPrevio(data.Medidor).then(existente => {
+        if (existente) return;
+        
+        const datosExtraidos = extraerDatosComentario(data.ComentarioGeneral);
+        const unidadTransformada = transformarUsuarioAUnidad(currentUser.usuario);
+        
+        const datosDiv = document.getElementById('datosAutocompletar');
+        datosDiv.innerHTML = generarFormularioIPRAutomatico(unidadTransformada, data.CuentaContrato, datosExtraidos);
+    });
+}
+
+	function mostrarSelectorMedidores(resultados, medidor) {
+    console.log(`⚠️ ${resultados.length} registros encontrados para medidor ${medidor}`);
+    
+    const datosDiv = document.getElementById('datosAutocompletar');
+    datosDiv.style.display = 'block';
+    
+    let html = `
+        <div style="background: #fff3cd; padding: 15px; border-radius: 10px; margin-bottom: 20px; border-left: 4px solid #ff9800;">
+            <strong style="color: #e65100;">⚠️ MEDIDOR DUPLICADO</strong><br>
+            <p style="margin: 10px 0 0 0; color: #666;">
+                Se encontraron <strong>${resultados.length}</strong> registros con el medidor <strong>${medidor}</strong>.<br>
+                Selecciona el correcto según la Cuenta (NIC):
+            </p>
+        </div>
+        
+        <div style="display: grid; gap: 15px;">`;
+    
+    resultados.forEach((item, idx) => {
+        html += `
+            <div style="background: #f8f9fa; padding: 15px; border-radius: 8px; border: 2px solid #e1e5e9; cursor: pointer; transition: all 0.3s;"
+                 onclick="seleccionarMedidor(${idx})"
+                 onmouseover="this.style.borderColor='#3b54d3'; this.style.background='#f0f9ff'"
+                 onmouseout="this.style.borderColor='#e1e5e9'; this.style.background='#f8f9fa'">
+                
+                <div style="display: grid; grid-template-columns: auto 1fr; gap: 10px; align-items: start;">
+                    <div style="background: #3b54d3; color: white; width: 30px; height: 30px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 700;">
+                        ${idx + 1}
+                    </div>
+                    <div>
+                        <strong style="color: #1976d2; font-size: 16px;">📄 NIC: ${item.CuentaContrato}</strong><br>
+                        <span style="color: #666; font-size: 14px;">⚡ Medidor: ${item.Medidor}</span>
+                    </div>
+                </div>
+            </div>`;
+    });
+    
+    html += `</div>`;
+    
+    datosDiv.innerHTML = html;
+    
+    // Guardar resultados globalmente
+    window.medidoresDuplicados = resultados;
+}
+
+
+	async function seleccionarMedidor(index) {
+    if (!window.medidoresDuplicados || !window.medidoresDuplicados[index]) {
+        alert('Error: Datos no disponibles');
+        return;
+    }
+    
+    const medidorSeleccionado = window.medidoresDuplicados[index];
+    
+    console.log(`✅ Medidor seleccionado: NIC ${medidorSeleccionado.CuentaContrato}`);
+    
+    // Validar retiro previo
+    const { data: existente } = await supabaseClient
+        .from('retiro_medidores')
+        .select('nic, num_os, fecha')
+        .eq('medidor', medidorSeleccionado.Medidor)
+        .eq('nic', medidorSeleccionado.CuentaContrato)  // ← Validar con NIC específico
+        .order('fecha', { ascending: false })
+        .limit(1);
+    
+    if (existente && existente.length > 0) {
+        const registro = existente[0];
+        const fechaRetiro = new Date(registro.fecha + 'T00:00:00').toLocaleDateString('es-ES');
+        const confirmar = confirm(
+            `⚠️ ADVERTENCIA\n\n` +
+            `Este medidor YA fue retirado para esta cuenta:\n\n` +
+            `• NIC: ${registro.nic}\n` +
+            `• Fecha: ${fechaRetiro}\n` +
+            `• NUM. O/S: ${registro.num_os}\n\n` +
+            `¿Registrarlo nuevamente?`
+        );
+        
+        if (!confirmar) {
+            document.getElementById('datosAutocompletar').style.display = 'none';
+            document.getElementById('ipr_medidor').value = '';
+            return;
+        }
+    }
+    
+    // Procesar medidor seleccionado
+    const datosExtraidos = extraerDatosComentario(medidorSeleccionado.ComentarioGeneral);
+    const unidadTransformada = transformarUsuarioAUnidad(currentUser.usuario);
+    
+    const datosDiv = document.getElementById('datosAutocompletar');
+    datosDiv.innerHTML = generarFormularioIPRAutomatico(
+        unidadTransformada, 
+        medidorSeleccionado.CuentaContrato, 
+        datosExtraidos
+    );
+    
+    // Limpiar variable global
+    delete window.medidoresDuplicados;
+}
+
+	async function verificarRetiroPrevio(medidor) {
+    const { data: existente } = await supabaseClient
+        .from('retiro_medidores')
+        .select('nic, num_os, fecha')
+        .eq('medidor', medidor)
+        .order('fecha', { ascending: false })
+        .limit(1);
+    
+    if (existente && existente.length > 0) {
+        const registro = existente[0];
+        const fechaRetiro = new Date(registro.fecha + 'T00:00:00').toLocaleDateString('es-ES');
+        const confirmar = confirm(
+            `⚠️ ADVERTENCIA\n\n` +
+            `Este medidor YA fue retirado:\n\n` +
+            `• Cuenta: ${registro.nic}\n` +
+            `• Fecha: ${fechaRetiro}\n` +
+            `• NUM. O/S: ${registro.num_os}\n\n` +
+            `¿Registrarlo nuevamente?`
+        );
+        
+        if (!confirmar) {
+            document.getElementById('datosAutocompletar').style.display = 'none';
+            document.getElementById('ipr_medidor').value = '';
+            return true;
+        }
+    }
+    return false;
+}
 
 // ========================================
 // 🔍 BUSCAR DATOS DE MEDIDOR EN CONSULTA SUMINISTRO
@@ -4914,101 +5055,58 @@ async function buscarDatosMedidorIPR() {
         console.error('❌ Input medidor no existe');
         return;
     }
-    
+
     const medidor = inputMedidor.value.trim();
-    
     if (!medidor) {
         alert('⚠️ Por favor ingrese un número de medidor');
         return;
     }
-    
+
     const datosDiv = document.getElementById('datosAutocompletar');
     if (!datosDiv) {
         console.error('❌ Contenedor datosAutocompletar no existe');
         return;
     }
-    
+
     datosDiv.style.display = 'block';
     datosDiv.innerHTML = '<div class="loading" style="display: block; margin: 20px auto;"></div><p style="text-align: center; color: #666;">Buscando medidor en Consulta Suministro...</p>';
-    
+
     try {
         console.log('🔍 Buscando medidor:', medidor);
-        
-        // 🔍 Buscar en consultas_servicios
+
         const { data, error } = await supabaseClient
             .from('consultas_servicios')
-            .select('CuentaContrato, Medidor, ComentarioGeneral')
-            .eq('Medidor', medidor)
-            .single();
-        
-        console.log('📊 Resultado búsqueda:', data, error);
-        
-        // ⚠️ MEDIDOR NO ENCONTRADO - MODO MANUAL
-        if (error || !data) {
+            .select('id, CuentaContrato, Medidor, ComentarioGeneral')
+            .eq('Medidor', medidor);
+
+        // ✅ Manejo de error o sin resultados
+        if (error || !data || data.length === 0) {
             console.log('⚠️ Medidor NO encontrado - Activando modo manual');
-            
             const confirmar = confirm(
                 '⚠️ MODO MANUAL ACTIVADO\n\n' +
                 `El medidor "${medidor}" NO existe en Consulta Suministro.\n\n` +
                 'Deberás completar TODOS los campos manualmente.\n\n' +
                 '¿Deseas continuar?'
             );
-            
+
             if (!confirmar) {
                 datosDiv.style.display = 'none';
                 inputMedidor.value = '';
                 return;
             }
-            
-            // Generar formulario MANUAL (todos los campos editables)
+
             const unidadTransformada = transformarUsuarioAUnidad(currentUser.usuario);
             datosDiv.innerHTML = generarFormularioIPRManual(unidadTransformada, medidor);
             return;
         }
-        
-        console.log('✅ Medidor encontrado en Consulta Suministro');
-        
-        // ✅ Validar si ya fue retirado
-        const { data: existente } = await supabaseClient
-            .from('retiro_medidores')
-            .select('nic, num_os, fecha')
-            .eq('medidor', medidor)
-            .order('fecha', { ascending: false })
-            .limit(1);
-        
-        if (existente && existente.length > 0) {
-            const registro = existente[0];
-            const fechaRetiro = new Date(registro.fecha + 'T00:00:00').toLocaleDateString('es-ES');
-            const confirmar = confirm(
-                `⚠️ ADVERTENCIA\n\n` +
-                `Este medidor YA fue retirado anteriormente:\n\n` +
-                `• Cuenta: ${registro.nic}\n` +
-                `• Fecha retiro: ${fechaRetiro}\n` +
-                `• NUM. O/S: ${registro.num_os}\n\n` +
-                `¿Desea registrarlo nuevamente?`
-            );
-            
-            if (!confirmar) {
-                datosDiv.style.display = 'none';
-                inputMedidor.value = '';
-                return;
-            }
+
+        // ✅ Caso con resultados
+        if (data.length === 1) {
+            procesarMedidorUnico(data[0]);
+        } else {
+            mostrarSelectorMedidores(data, medidor);
         }
-        
-        // 📦 Extraer datos del ComentarioGeneral
-        console.log('📝 ComentarioGeneral:', data.ComentarioGeneral);
-        const datosExtraidos = extraerDatosComentario(data.ComentarioGeneral);
-        console.log('📊 Datos extraídos:', datosExtraidos);
-        
-        // 🏢 Obtener unidad transformada
-        const unidadTransformada = transformarUsuarioAUnidad(currentUser.usuario);
-        console.log('🏢 Unidad transformada:', unidadTransformada);
-        
-        // 📝 Generar formulario AUTOMÁTICO (datos prellenados)
-        datosDiv.innerHTML = generarFormularioIPRAutomatico(unidadTransformada, data.CuentaContrato, datosExtraidos);
-        
-        console.log('✅ Formulario automático generado');
-        
+
     } catch (err) {
         console.error('❌ Error en búsqueda:', err);
         datosDiv.innerHTML = `
@@ -5018,7 +5116,6 @@ async function buscarDatosMedidorIPR() {
             </div>`;
     }
 }
-
 
 
 		function generarFormularioIPRAutomatico(unidad, nic, datosExtraidos) {
