@@ -6408,7 +6408,24 @@ function transformarUsuarioAUnidad(usuario) {
 }
 
 
+// ========================================
+// 🔄 FUNCIÓN GLOBAL: NORMALIZAR UNIDAD
+// Debe estar FUERA de cualquier función, en el scope global del archivo
+// ========================================
+const normalizarUnidad = (valor) => {
+    if (!valor) return '';
+    return String(valor)
+        .trim()
+        .toUpperCase()
+        .normalize('NFD')           // Separar acentos: "á" → "a" + " ́"
+        .replace(/[\u0300-\u036f]/g, '') // Quitar marcas diacríticas
+        .replace(/[^A-Z0-9]/g, '');      // Solo A-Z y 0-9
+};
+console.log('✅ normalizarUnidad definida globalmente');
+
+
 async function cargarInterfazKMLRuta() {
+
     console.log('🚀 EJECUTANDO: cargarInterfazKMLRuta (Modo Carga Total + Comentarios)');
     
     const chunkArray = (arr, size) => {
@@ -6474,57 +6491,73 @@ async function cargarInterfazKMLRuta() {
         }
 
         // ========================================
-        // 🔥 3️⃣ FILTRADO ROBUSTO DE MIS ASIGNADAS (CON NORMALIZACIÓN)
-        // ========================================
-        console.log('🔍 Filtrando OS asignadas con normalización robusta...');
+// 🔥 3️⃣ FILTRADO ROBUSTO DE MIS ASIGNADAS (CON NORMALIZACIÓN)
+// ========================================
+console.log('🔍 Filtrando OS asignadas con normalización robusta...');
+
+const rolActual = currentUser?.rol;
+const esGestion = ['Administrador', 'Despacho', 'Supervisor'].includes(rolActual);
+
+// Normalizar unidad objetivo para comparación
+const unidadObjetivo = miUnidadRaw || String(currentUser.usuario).trim().toUpperCase();
+const unidadObjetivoLimpia = unidadObjetivo.replace(/[^A-Z0-9]/g, '').toUpperCase();
+console.log(`📊 Unidad: "${unidadObjetivo}" → Limpia: "${unidadObjetivoLimpia}"`);
+
+let misAsignacionesPropias = [];
+
+if (esGestion) {
+    // ✅ ADMIN/DESPACHO/SUPERVISOR: Cargar TODAS las OS asignadas (sin filtrar por usuario)
+    // El filtrado por unidad se hará al momento de generar el mapa (en generarMapaAdminKMLRuta)
+    misAsignacionesPropias = asignaciones.map(asig => {
+        const idAsignada = String(asig.osatomo).trim();
+        const detalle = todasLasPendientes.find(p => String(p.OSATMO).trim() === idAsignada);
         
-        // Normalizar unidad objetivo para comparación
-        const unidadObjetivo = miUnidadRaw || String(currentUser.usuario).trim().toUpperCase();
-        const unidadObjetivoLimpia = unidadObjetivo.replace(/[^A-Z0-9]/g, '').toUpperCase();
-        console.log(`📊 Unidad: "${unidadObjetivo}" → Limpia: "${unidadObjetivoLimpia}"`);
-
-        // Filtrar con comparación flexible (ignora guiones, espacios, etc.)
-        const misAsignacionesPropias = asignaciones
-            .filter(asig => {
-                const unidadOS = String(asig.Unidad || '').trim();
-                if (!unidadOS) return false;
-                const unidadOSLimpia = unidadOS.replace(/[^A-Z0-9]/g, '').toUpperCase();
-                return unidadOSLimpia === unidadObjetivoLimpia;
-            })
-            .map(asig => {
-                const idAsignada = String(asig.osatomo).trim();
-                const detalle = todasLasPendientes.find(p => String(p.OSATMO).trim() === idAsignada);
-                
-                return {
-                    ...asig,
-                    OSATMO: idAsignada,
-                    Tipologia: detalle?.Tipologia || asig.Tipologia || 'Sin tipología',
-                    Coordenadas: detalle?.Coordenadas || detalle?.Coordendasgis || null,
-                    Coordendasgis: detalle?.Coordendasgis || null,
-                    Tipo_de_OS: detalle?.Tipo_de_OS || 'S/D',
-                    Medidor: detalle?.Medidor || null,          // ← IMPORTANTE para comentarios
-                    CuentaContrato: detalle?.CuentaContrato || null,
-                    Comentario: detalle?.Comentario || '',       // ← Comentario original de OS Pendientes
-                    ComentarioGeneral: detalle?.Comentario || '',
-                    esAsignada: true
-                };
-            });
-
-        console.log(`✅ Mis OS asignadas: ${misAsignacionesPropias.length}`);
-
-        // 🔍 DEBUG PARA OS ESPECÍFICA (remover en producción si no se necesita)
-        if (misAsignacionesPropias.length === 0) {
-            console.log('🔍 Debug: Buscando OS específicas en dataset completo...');
-            ['11223066', '11195544'].forEach(osBuscada => {
-                const encontrada = (asignaciones || []).find(os => 
-                    String(os.osatomo).trim() === osBuscada
-                );
-                if (encontrada) {
-                    const coincide = String(encontrada.Unidad).replace(/[^A-Z0-9]/g, '').toUpperCase() === unidadObjetivoLimpia;
-                    console.log(`📋 OS ${osBuscada}: Unidad="${encontrada.Unidad}" → Coincide: ${coincide ? '✅' : '❌'}`);
-                }
-            });
-        }
+        return {
+            ...asig,
+            OSATMO: idAsignada,
+            Tipologia: detalle?.Tipologia || asig.Tipologia || 'Sin tipología',
+            Coordenadas: detalle?.Coordenadas || detalle?.Coordendasgis || null,
+            Coordendasgis: detalle?.Coordendasgis || null,
+            Tipo_de_OS: detalle?.Tipo_de_OS || 'S/D',
+            Medidor: detalle?.Medidor || null,
+            CuentaContrato: detalle?.CuentaContrato || null,
+            Comentario: detalle?.Comentario || '',
+            ComentarioGeneral: detalle?.Comentario || '',
+            ComentarioKML: detalle?.Comentario || '',
+            esAsignada: true
+        };
+    });
+    console.log(`✅ Modo Gestión: ${misAsignacionesPropias.length} OS cargadas (todas las unidades)`);
+} else {
+    // ✅ CONTRATISTA/CONSULTA: Filtrar solo sus OS asignadas por unidad
+    misAsignacionesPropias = asignaciones
+        .filter(asig => {
+            const unidadOS = String(asig.Unidad || '').trim();
+            if (!unidadOS) return false;
+            const unidadOSLimpia = normalizarUnidad(unidadOS);
+            return unidadOSLimpia === unidadObjetivoLimpia;
+        })
+        .map(asig => {
+            const idAsignada = String(asig.osatomo).trim();
+            const detalle = todasLasPendientes.find(p => String(p.OSATMO).trim() === idAsignada);
+            
+            return {
+                ...asig,
+                OSATMO: idAsignada,
+                Tipologia: detalle?.Tipologia || asig.Tipologia || 'Sin tipología',
+                Coordenadas: detalle?.Coordenadas || detalle?.Coordendasgis || null,
+                Coordendasgis: detalle?.Coordendasgis || null,
+                Tipo_de_OS: detalle?.Tipo_de_OS || 'S/D',
+                Medidor: detalle?.Medidor || null,
+                CuentaContrato: detalle?.CuentaContrato || null,
+                Comentario: detalle?.Comentario || '',
+                ComentarioGeneral: detalle?.Comentario || '',
+                ComentarioKML: detalle?.Comentario || '',
+                esAsignada: true
+            };
+        });
+    console.log(`✅ Modo Ejecución: ${misAsignacionesPropias.length} OS para unidad ${unidadObjetivo}`);
+}
 
         // ========================================
         // 🔥 4️⃣ INYECTAR COMENTARIOS DE CONSULTA_SERVICIOS
@@ -6627,11 +6660,134 @@ misAsignacionesPropias.forEach(os => {
 }
 
 // ========================================
-// 🗺️ INTERFAZ GENERACIÓN KML RUTA (OPTIMIZADA)
+// 🗺️ GENERAR MAPA KML RUTA - FUNCIÓN GLOBAL PARA ADMIN/DESPACHO/SUPERVISOR (CORREGIDA)
+// ========================================
+async function generarMapaAdminKMLRuta() {
+    console.log('🗺️ ==========================================');
+    console.log('🗺️ GENERANDO MAPA KML - MODO ADMIN/DESPACHO/SUPERVISOR');
+    console.log('🗺️ ==========================================');
+    
+    const resultsContainer = document.getElementById('searchResults');
+    if (!resultsContainer) {
+        console.error('❌ Contenedor searchResults no encontrado');
+        return;
+    }
+    
+    // ✅ 1. Obtener unidad seleccionada PRIMERO (antes de usarla)
+    const selectUnidad = document.getElementById('selectUnidadKML');
+    const unidadSeleccionada = selectUnidad?.value;
+    
+    // ✅ 2. Validar que haya unidad seleccionada
+    if (!unidadSeleccionada) {
+        resultsContainer.innerHTML = `
+            <div class="result-card" style="background: #fff3cd; border-left: 4px solid #ffc107;">
+                <div class="result-header">⚠️ Seleccione una unidad</div>
+                <p style="text-align: center; color: #666;">Por favor seleccione una unidad de la lista antes de generar el mapa.</p>
+            </div>`;
+        return;
+    }
+    
+    console.log(`📍 Unidad seleccionada: "${unidadSeleccionada}"`);
+    resultsContainer.innerHTML = '<div class="loading" style="display: block; margin: 20px auto;"></div>';
+    
+    try {
+        // ✅ 3. Normalizar unidad (USA LA FUNCIÓN GLOBAL normalizarUnidad)
+        // ⚠️ NO redefinir normalizarUnidad aquí - debe estar en scope global del archivo
+        const unidadNorm = normalizarUnidad(unidadSeleccionada);
+        console.log(`🔍 Unidad normalizada: "${unidadSeleccionada}" → "${unidadNorm}"`);
+        
+       // ✅ 4. Obtener OS desde memoria global (dataset completo para Admin)
+// ⚠️ NO usar osKMLDataTemporal aquí - ese es solo para la ejecución actual del mapa
+let osData = window.osAsignadasKML || [];
+
+// Si está vacío (primer carga), recargar desde Supabase
+if (!osData || osData.length === 0) {
+    console.log('📥 Recargando OS asignadas desde Supabase...');
+    const {  asignaciones, error } = await supabaseClient
+        .from('os_asignadas')
+        .select('*');
+    
+    if (error) throw error;
+    osData = asignaciones || [];
+    // ✅ Guardar dataset completo en memoria global
+    window.osAsignadasKML = osData;
+    console.log(`✅ ${osData.length} OS recargadas y guardadas`);
+}
+        
+        // ✅ 5. Filtrar OS por unidad con normalización CONSISTENTE (usa función global)
+        const osFiltradas = osData.filter(os => {
+            const osUnidadRaw = os.Unidad || os.unidad || '';
+            const osUnidadNorm = normalizarUnidad(osUnidadRaw);  // ← Usa función global
+            return osUnidadNorm === unidadNorm;
+        });
+        
+        console.log(`🔍 OS filtradas para "${unidadSeleccionada}": ${osFiltradas.length} de ${osData.length} totales`);
+        
+        // ✅ 6. Validar que haya OS con coordenadas válidas
+        const osConCoordenadas = osFiltradas.filter(os => {
+            const coords = os.Coordenadas || os.Coordendasgis;
+            return coords && String(coords).includes(',') && !String(coords).toLowerCase().includes('sin');
+        });
+        
+        console.log(`📍 OS con coordenadas válidas: ${osConCoordenadas.length}`);
+        
+        if (osConCoordenadas.length === 0) {
+            const tieneOS = osFiltradas.length > 0;
+            resultsContainer.innerHTML = `
+                <div class="result-card" style="background: ${tieneOS ? '#fff3cd' : '#fee2e2'}; border-left: 4px solid ${tieneOS ? '#ffc107' : '#ef4444'};">
+                    <div class="result-header">${tieneOS ? '⚠️ Sin coordenadas' : '❌ Sin OS asignadas'}</div>
+                    <p style="text-align: center; color: #666;">
+                        ${tieneOS 
+                            ? `Se encontraron <b>${osFiltradas.length} OS</b> para <b>${unidadSeleccionada}</b>, pero ninguna tiene coordenadas válidas.<br><small>Verifique los campos "Coordenadas" o "Coordendasgis" en OS Pendientes.</small>`
+                            : `No se encontraron OS asignadas para la unidad <b>${unidadSeleccionada}</b>.<br><small>Verifique que la unidad tenga asignaciones en la tabla "os_asignadas".</small>`
+                        }
+                    </p>
+                    ${tieneOS ? `<button class="btn" onclick="generarMapaAdminKMLRuta()" style="margin-top:10px;background:#64748b;color:white;padding:8px 16px;border-radius:6px;border:none;cursor:pointer">🔄 Reintentar</button>` : ''}
+                </div>`;
+            return;
+        }
+        
+        // ✅ 7. Normalizar campos para compatibilidad con generarMapaKMLRuta
+        const osNormalizadas = osConCoordenadas.map(os => {
+            const coordsRaw = os.Coordenadas || os.Coordendasgis || '';
+            const [lat, lng] = coordsRaw.split(',').map(c => parseFloat(c.trim()));
+            
+            return {
+                ...os,
+                OSATMO: String(os.osatomo || os.OSATMO || os.OSATOMO || '').trim(),
+                Comentario: os.Comentario || os.ComentarioGeneral || '',
+                ComentarioGeneral: os.Comentario || os.ComentarioGeneral || '',
+                ComentarioKML: os.Comentario || os.ComentarioGeneral || '',
+                lat: isNaN(lat) ? null : lat,
+                lng: isNaN(lng) ? null : lng
+            };
+        });
+        
+        // ✅ 8. Generar el mapa usando la función principal
+        if (typeof generarMapaKMLRuta === 'function') {
+            await generarMapaKMLRuta(osNormalizadas, unidadSeleccionada);
+        } else {
+            throw new Error('generarMapaKMLRuta no está definida');
+        }
+        
+    } catch (err) {
+        console.error('❌ Error generando mapa:', err);
+        resultsContainer.innerHTML = `<div class="result-card">❌ Error: ${err.message}</div>`;
+    }
+}
+
+// ✅ EXPOSICIÓN GLOBAL CRÍTICA: Hacer la función disponible para onclick HTML
+window.generarMapaAdminKMLRuta = generarMapaAdminKMLRuta;
+console.log('✅ generarMapaAdminKMLRuta expuesta globalmente');
+
+
+
+// ========================================
+// 🗺️ INTERFAZ GENERACIÓN KML RUTA (OPTIMIZADA Y CORREGIDA)
 // ========================================
 function generarInterfazAdminKMLRuta(unidades, osAsignadas) {
     console.log('🎨 ==========================================');
-    console.log('🎨 GENERANDO INTERFAZ KML');
+    console.log('🎨 GENERANDO INTERFAZ KML - MODO ADMIN/DESPACHO/SUPERVISOR');
     console.log('🎨 Unidades disponibles:', unidades?.length || 0);
     console.log('🎨 Total OS asignadas:', osAsignadas?.length || 0);
     console.log('🎨 ==========================================');
@@ -6639,14 +6795,20 @@ function generarInterfazAdminKMLRuta(unidades, osAsignadas) {
     const searchGrid = document.getElementById('searchGrid');
     const resultsContainer = document.getElementById('searchResults');
 
-    // 1. Limpieza de contenedores para evitar duplicados visuales
+    // 1. Limpieza de contenedores (evitar duplicados)
     if (resultsContainer) resultsContainer.innerHTML = '';
-    if (!searchGrid) return console.error('❌ No se encontró el contenedor searchGrid');
+    if (!searchGrid) return console.error('❌ No se encontró searchGrid');
 
-    // 2. Guardar datos globalmente (Sincronizado con el resto del sistema)
-    window.osAsignadasKML = osAsignadas;
+    // 2. 🧹 Limpiar variables temporales de ejecuciones anteriores
+    if (window.osKMLDataTemporal) delete window.osKMLDataTemporal;
+    
+    // ✅ Guardar dataset COMPLETO para Admin (NO sobrescribir con datos filtrados)
+    window.osAsignadasKML = osAsignadas;  // ← Dataset completo de TODAS las unidades
+    window.unidadesDisponiblesKML = unidades;
+    
+    console.log(`💾 Dataset completo guardado: ${osAsignadas.length} OS, ${unidades.length} unidades`);
 
-    // 3. Generar HTML con estructura limpia y profesional
+    // 3. Generar HTML (SIN código JS dentro del template string)
     searchGrid.innerHTML = `
         <div class="result-card" style="background: #ffffff; border: 2px solid #4caf50; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);">
             
@@ -6697,7 +6859,7 @@ function generarInterfazAdminKMLRuta(unidades, osAsignadas) {
                         style="background: #3b82f6; color: white; padding: 12px; border-radius: 8px; border: none; font-weight: 700; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px;">
                     📥 KML GIS
                 </button>
-                
+
                 <button class="btn" onclick="generarMapaAdminKMLRuta()" 
                         style="background: #f59e0b; color: white; padding: 12px; border-radius: 8px; border: none; font-weight: 700; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px;">
                     🗺️ Ver Mapa
@@ -6705,7 +6867,12 @@ function generarInterfazAdminKMLRuta(unidades, osAsignadas) {
             </div>
         </div>
     `;
-} 
+
+    console.log('✅ Interfaz Admin KML generada correctamente');
+}
+
+
+
 
 // ========================================
 // 📊 ACTUALIZAR CONTADOR DE UNIDADES SELECCIONADAS
@@ -7808,34 +7975,27 @@ async function generarMapaKMLRuta(osAsignadas, unidad) {
     
     const osNormalizadas = osAsignadas
         .map(os => {
-            // Extraer y normalizar ID de OS (prioridad de campos)
             const id = String(os.osatomo || os.OSATMO || os.OSATOMO || '').trim();
-            
-            // Extraer coordenadas con prioridad explícita
             const coords = os.Coordenadas || os.Coordendasgis || null;
-            
-            // Extraer comentario con fallback en cadena
             const comentarioOriginal = os.Comentario || os.ComentarioGeneral || os.comentario || '';
             
             return {
-                ...os,  // Mantener todos los campos originales
+                ...os,
                 osatomo: id,
-                OSATMO: id,  // Normalizar para consistencia
+                OSATMO: id,
                 Tipologia: os.Tipologia || os.tipologia || 'Sin tipología',
                 Coordenadas: coords,
                 esAsignada: true,
-                // Normalizar comentarios
                 Comentario: comentarioOriginal,
-                ComentarioGeneral: comentarioOriginal
+                ComentarioGeneral: comentarioOriginal,
+                ComentarioKML: comentarioOriginal
             };
         })
         .filter(os => {
-            // Filtrar OS sin ID válido
             if (!os.OSATMO) {
                 console.warn(`⚠️ OS filtrada: Sin ID válido`, os);
                 return false;
             }
-            // Filtrar OS sin coordenadas (no pueden ser centro de ruta)
             if (!os.Coordenadas || !String(os.Coordenadas).includes(',')) {
                 console.warn(`⚠️ OS ${os.OSATMO} sin coordenadas válidas - excluida como centro`);
             }
@@ -7845,22 +8005,22 @@ async function generarMapaKMLRuta(osAsignadas, unidad) {
     console.log(`✅ OS normalizadas: ${osNormalizadas.length} de ${osAsignadas.length}`);
 
     if (osNormalizadas.length === 0) {
-        resultsContainer.innerHTML = `
-            <div class="result-card" style="background: #fff3cd; border-left: 4px solid #ffc107;">
-                <div class="result-header">⚠️ Sin OS válidas</div>
-                <p style="text-align: center; color: #666;">
-                    No se encontraron OS con coordenadas válidas para la unidad <b>${unidadSeleccionada}</b>.
-                </p>
-            </div>`;
+        resultsContainer.innerHTML = `<div class="result-card" style="background: #fff3cd; border-left: 4px solid #ffc107;"><div class="result-header">⚠️ Sin OS válidas</div><p style="text-align: center; color: #666;">No se encontraron OS con coordenadas válidas para la unidad <b>${unidadSeleccionada}</b>.</p></div>`;
         return;
     }
 
     // ========================================
-    // ✅ 2️⃣ GUARDAR EN MEMORIA GLOBAL
-    // ========================================
-    window.osAsignadasKML = osNormalizadas;
-    window.osKMLData = osNormalizadas;
-    console.log('💾 OS guardadas en memoria global');
+// ✅ 2️⃣ GUARDAR EN MEMORIA (SIN SOBRESCRITURA)
+// ========================================
+// ⚠️ CRÍTICO: NO sobrescribir window.osAsignadasKML (es el dataset completo para Admin)
+// Usar variable temporal SOLO para esta ejecución específica
+window.osKMLDataTemporal = osNormalizadas;
+
+// ✅ Guardar también en osKMLData para compatibilidad con funciones legacy
+window.osKMLData = osNormalizadas;
+
+console.log('💾 OS normalizadas guardadas en variables temporales');
+console.log('🔒 window.osAsignadasKML se mantiene intacto con el dataset completo');
 
     // ========================================
     // ✅ 3️⃣ OBTENER E INYECTAR COMENTARIOS (OPTIMIZADO)
@@ -8128,15 +8288,25 @@ function generarMapaKMLSoloAsignadas(unidad) {
 
     // ✅ Sincronización global
     window.osPartidaSeleccionada = osPartida;
-    window.unidadSeleccionadaKML = unidad; // Guardamos la unidad para la siguiente función
+    window.unidadSeleccionadaKML = unidad;
     
     console.log(`🗺️ Generando mapa solo asignadas para ${unidad}. Centro: ${osPartida}`);
     
-    // IMPORTANTE: Asegúrate que esta función use window.osAsignadasKML 
-    // y no vuelva a filtrar contra la tabla de Pendientes.
+    // ✅ IMPORTANTE: Usar la fuente de datos correcta según el contexto
+    // Para Admin: window.osAsignadasKML (dataset completo)
+    // Para Contratista/Consulta: window.osKMLDataTemporal (OS normalizadas de su unidad)
+    const fuenteDatos = window.osKMLDataTemporal || window.osAsignadasKML || [];
+    
+    // Validar que haya datos
+    if (fuenteDatos.length === 0) {
+        console.warn('⚠️ No hay datos disponibles para generar el mapa');
+        alert('⚠️ No hay órdenes disponibles. Por favor recargue la página.');
+        return;
+    }
+    
+    // Llamar a la función que genera el mapa con los datos correctos
     generarMapaKMLConPuntoPartida(unidad);
 }
-
 
 
 async function generarMapaKMLConFiltrosGuardados(unidad) {
@@ -8468,22 +8638,23 @@ function generarRutaDesdePuntoFijo(puntoNombre, puntoLat, puntoLng) {
 function generarMapaKMLConPuntoPartida(unidad) {
     const startTime = performance.now();
     const osPartidaId = document.getElementById('selectPuntoPartidaKML')?.value;
-
+    
     if (!osPartidaId) {
         alert('⚠️ Por favor seleccione un punto de partida');
         return;
     }
-
-    // 1️⃣ VALIDAR DATOS DE ORIGEN
-    const osDataOriginal = window.osKMLData;
+    
+    // ✅ 1️⃣ VALIDAR DATOS DE ORIGEN - Usar fuente correcta según contexto
+    const osDataOriginal = window.osKMLDataTemporal || window.osAsignadasKML || [];
+    
     if (!osDataOriginal || !Array.isArray(osDataOriginal)) {
-        console.error('❌ window.osKMLData no disponible');
+        console.error('❌ No hay datos disponibles para generar el mapa');
         alert('❌ Error: Datos no cargados. Recargue la página.');
         return;
     }
-
-    console.log(`🚨 --- INICIANDO GENERACIÓN KML RUTA (SOLO ASIGNADAS) ---`);
-    console.log(`📍 Punto partida: ${osPartidaId} | Unidad: ${unidad}`);
+    
+    console.log(`🚨 - INICIANDO GENERACIÓN KML RUTA (SOLO ASIGNADAS) -`);
+    console.log(`📊 Fuente de datos: ${osDataOriginal.length} OS disponibles`);
 
     // 2️⃣ APLICAR REGLAS DE NEGOCIO (Recordatorio: Reguladas y > 500 siempre van)
     // Filtramos para asegurar que lo que se muestre cumpla con los requisitos mínimos
@@ -17268,6 +17439,44 @@ function diagnosticarComentarios() {
     
     console.groupEnd();
 }
+
+// ========================================
+// 🧪 FUNCIÓN DE DEBUG: VALIDAR ESTADO KML RUTA
+// Ejecutar en consola: debugValidarKMLRuta()
+// ========================================
+function debugValidarKMLRuta() {
+    console.group('🧪 VALIDACIÓN KML RUTA');
+    
+    // 🔍 TEST 1: Verificar duplicación de dropdowns
+    const dropdownsKML = document.querySelectorAll('[id*="PuntoPartida"]');
+    console.log('🔍 Dropdowns de punto de partida:', dropdownsKML.length);
+    if (dropdownsKML.length > 1) {
+        console.warn('⚠️ Hay dropdowns duplicados:', Array.from(dropdownsKML).map(d => d.id));
+    }
+    
+    // 🔍 TEST 2: Verificar datasets
+    console.log('📦 window.osAsignadasKML:', window.osAsignadasKML?.length || 0, 'OS');
+    console.log('📦 window.osKMLDataTemporal:', window.osKMLDataTemporal?.length || 0, 'OS (temporal)');
+    
+    // 🔍 TEST 3: Simular filtrado por unidad
+    const unidad1 = 'CL-EYB-PAC-07';
+    const unidad2 = 'CL-EYB-PAC-06';
+    const normalizarUnidad = (v) => String(v).trim().toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^A-Z0-9]/g, '');
+    
+    const filtradas1 = (window.osAsignadasKML || []).filter(os => 
+        normalizarUnidad(os.Unidad) === normalizarUnidad(unidad1)
+    );
+    const filtradas2 = (window.osAsignadasKML || []).filter(os => 
+        normalizarUnidad(os.Unidad) === normalizarUnidad(unidad2)
+    );
+    
+    console.log(`🔍 Unidad "${unidad1}": ${filtradas1.length} OS`);
+    console.log(`🔍 Unidad "${unidad2}": ${filtradas2.length} OS`);
+    console.log(`✅ Dataset principal intacto: ${window.osAsignadasKML?.length > 100 ? 'SÍ' : 'NO'}`);
+    
+    console.groupEnd();
+}
+console.log('✅ debugValidarKMLRuta() disponible');
 
 
 
