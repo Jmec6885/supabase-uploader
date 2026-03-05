@@ -14543,52 +14543,36 @@ function generarFormularioIPRConDatos(unidad, nic, datosExtraidos) {
 // 📋 GENERAR OPCIONES DE CAUSA DE RETIRO CON CÓDIGOS
 // ========================================
 function generarOpcionesCausaRetiro() {
-    const causasConCodigo = [
-        { codigo: 'Z87', causa: 'Medidores provisionales o abandonados' },
-        { codigo: 'Z87', causa: 'Medidores testigos' },
-        { codigo: 'Z88', causa: 'Partes quebradas' },
-        { codigo: 'Z88', causa: 'Solo se entrega placa (destruido)' },
-        { codigo: 'Z89', causa: 'Pantalla dañada' },
-        { codigo: 'Z89', causa: 'Digitos cortados' },
-        { codigo: 'Z89', causa: 'Pantalla apagada/parpadea' },
-        { codigo: 'Z89', causa: 'Integrador dañado' },
-        { codigo: 'Z89', causa: 'Pantalla amarilla/empañado' },
-        { codigo: 'Z90', causa: 'Linea directa' },
-        { codigo: 'Z90', causa: 'Medidor sin sello' },
-        { codigo: 'Z90', causa: 'Manipulado' },
-        { codigo: 'Z91', causa: 'Partes oxidadas' },
-        { codigo: 'Z91', causa: 'Agua interna' },
-        { codigo: 'Z92', causa: 'Cambio de medidor analogo a digital' },
-        { codigo: 'Z92', causa: 'Cambio a medidor bidireccional' },
-        { codigo: 'Z92', causa: 'Cambio de medidor por proyectos de telemedición' },
-        { codigo: 'Z93', causa: 'El cliente solicita el cambio' },
-        { codigo: 'Z94', causa: 'Medidor inadecuado con servicio' },
-        { codigo: 'Z95', causa: 'Cambio a sistema blindado' },
-        { codigo: 'Z96', causa: 'Caso SIGET' },
-        { codigo: 'Z97', causa: 'Por incremento de carga/cambio de tarifa' },
-        { codigo: 'Z97', causa: 'Levantamiento de medidor/Retiro' },
-        { codigo: 'Z97', causa: 'CAB x CAT' },
-        { codigo: 'Z98', causa: 'Cambio de medidor por sistema subterraneo' },
-        { codigo: 'Z99', causa: 'Retiro de medidores de la marca NANSEN M1AT' },
-        { codigo: 'Z99', causa: 'Retiro de medidores de la marca LANDIS+GYR E23A' },
-        { codigo: 'Z100', causa: 'Retiro de medidores de la marca IMTECH HX13D' },
-        { codigo: 'Z100', causa: 'Retiro de medidores de la marca VOLTREX DD9557 (240V)' },
-        { codigo: 'Z101', causa: 'No encontrado en campo' },
-        { codigo: 'Z102', causa: 'Queda instalado en campo' },
-        { codigo: 'Z103', causa: 'Número distinto entre físico y sistema' },
-        { codigo: 'Z104', causa: 'Medidor completamente quemado y no se observa el numero' },
-        { codigo: 'Z105', causa: 'Parte del cuerpo del medidor esta quemado' },
-        { codigo: 'Z105', causa: 'Bornera del medidor se encuentra quemada' }
-    ];
- 
-    // Guardar globalmente para usar al guardar
-    window.causasIPR = causasConCodigo;
- 
-    return causasConCodigo.map((item, index) =>
-        `<option value="${index}">${item.codigo} - ${item.causa}</option>`
-    ).join('');
+    const causasConCodigo = [
+        { codigo: 'ZA088', causa: 'Quebrado' },
+        { codigo: 'ZA089', causa: 'Dificultades de lectura' },
+        { codigo: 'ZA090', causa: 'Irregularidad en el medidor' },
+        { codigo: 'ZA091', causa: 'Humedad/Oxidado' },
+        { codigo: 'ZA092', causa: 'Cambio de tecnología/obsoleto' },
+        { codigo: 'ZA101', causa: 'No encontrado en campo' },
+        { codigo: 'ZA102', causa: 'En serie' },
+        { codigo: 'ZA103', causa: 'Número difiere físico/sistema' },
+        { codigo: 'ZA104', causa: 'Quemado' },
+        { codigo: 'ZA105', causa: 'Integrador defectuoso' },
+        { codigo: 'ZA106', causa: 'Cambio de tarifa' },
+        { codigo: 'ZA107', causa: 'Incremento de carga' },
+        { codigo: 'ZA108', causa: 'Dígitos cortados' },
+        { codigo: 'ZA109', causa: 'Pantalla apagada/quebrada' },
+        { codigo: 'ZA110', causa: 'Disposición de seguridad' },
+        { codigo: 'ZA111', causa: 'Exactitud fuera del límite' },
+        { codigo: 'ZA112', causa: 'Bornera dañada' },
+        { codigo: 'ZA113', causa: 'Medidor desprendido' },
+        { codigo: 'ZA114', causa: 'Medidor con código de error' },
+        { codigo: 'ZA115', causa: 'Poste chocado' }
+    ];
+
+    // Guardar globalmente para usar al guardar
+    window.causasIPR = causasConCodigo;
+
+    return causasConCodigo.map((item, index) =>
+        `<option value="${index}">${item.codigo} - ${item.causa}</option>`
+    ).join('');
 }
- 
 
 
  	// ========================================
