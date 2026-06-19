@@ -1083,9 +1083,9 @@ async function verificarInactividad(userData) {
     console.log(`⏰ Días sin actividad: ${diasInactivo}`);
     
     // Supervisor sin límite
-    if (userData.rol === 'Supervisor') {
-        return { inactivo: false };
-    }
+    if (userData.rol === 'Supervisor' || userData.rol === 'Administrador') {
+    return { inactivo: false };
+}
     
     // Todos los demás roles: 5 días
     if (diasInactivo >= 5) {
