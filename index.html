@@ -16601,7 +16601,23 @@ function formatearComentario(valor, esDireccion = false) {
     .replace(/Propiedad :/g, '<br><strong>Propiedad:</strong>')
 	.replace(/SUBESTACION/g, '<br><strong>SUBESTACION:</strong>')
 	.replace(/Voltaje Primario Nominal :/g, '<br><strong>Voltaje Primario Nominal :</strong>')
-    
+
+		// --- NUEVOS CAMPOS DE ANOMALIAS ---
+    .replace(/Anomalia Febrero/g, '<br><strong>Anomalía Febrero:</strong>')
+    .replace(/Anomalia Marzo/g, '<br><strong>Anomalía Marzo:</strong>')
+    .replace(/Anomalia Abril/g, '<br><strong>Anomalía Abril:</strong>')
+    .replace(/Anomalia Mayo/g, '<br><strong>Anomalía Mayo:</strong>')
+    .replace(/Anomalia Junio/g, '<br><strong>Anomalía Junio:</strong>')
+    .replace(/Anomalia Julio/g, '<br><strong>Anomalía Julio:</strong>')
+    .replace(/Anomalia Agosto/g, '<br><strong>Anomalía Agosto:</strong>')
+    .replace(/Anomalia Septiembre/g, '<br><strong>Anomalía Septiembre:</strong>')
+    .replace(/Anomalia Oct\./g, '<br><strong>Anomalía Oct.:</strong>')
+    .replace(/Anomalia Nov\./g, '<br><strong>Anomalía Nov.:</strong>')
+    .replace(/Anomalia Dic 25/g, '<br><strong>Anomalía Dic 25:</strong>')
+    .replace(/Anomalia Ene\. 26/g, '<br><strong>Anomalía Ene. 26:</strong>')
+    .replace(/Anomalia Feb\. 26/g, '<br><strong>Anomalía Feb. 26:</strong>')
+    .replace(/Anomalia Marz\. 26/g, '<br><strong>Anomalía Marz. 26:</strong>')
+    .replace(/Anomalia Abril 26/g, '<br><strong>Anomalía Abril 26:</strong>')
 
     // --- ENLACES ---
     .replace(/(https?:\/\/[^\s]+)/g, '<br><a href="$1" target="\_blank" style="color: #3b54d3; text-decoration: underline; font-weight: 600;">🔗 Ver enlace</a>');
