@@ -514,6 +514,16 @@
             </div>
         </div>
     </div>
+
+    <!-- ✅ Modal Anomalía - FUERA de chartsModal, antes de </body> -->
+    <div id="anomaliaModal" class="modal" style="z-index: 2000;">
+        <div class="modal-content">
+            <span class="close" onclick="cerrarAnomalia()">×</span>
+            <h2 id="anomaliaModalTitle">Historial de Anomalías</h2>
+            <div id="anomaliaContenido" style="margin-top: 20px;"></div>
+        </div>
+    </div>
+
 </body>
 
 <script>
@@ -4632,9 +4642,127 @@ function crearGraficas(datos) {
 
     // ✅ Cerrar modal al hacer click fuera
     window.onclick = function(event) {
-        const modal = document.getElementById('chartsModal');
-        if (event.target === modal) cerrarGraficas();
+    const chartsModal = document.getElementById('chartsModal');
+    if (event.target === chartsModal) cerrarGraficas();
+
+    const anomaliaModal = document.getElementById('anomaliaModal');
+    if (event.target === anomaliaModal) cerrarAnomalia();
+}
+
+function parsearAnomalia(texto) {
+    if (!texto || texto.trim() === '') return [];
+
+    const entradas = [];
+    // Separar por líneas y limpiar
+    const lineas = texto.split('\n').map(l => l.trim()).filter(l => l !== '');
+
+    let entradaActual = null;
+
+    lineas.forEach(linea => {
+        const esLink = linea.startsWith('http');
+        const esMes = /^Anomalia\s+/i.test(linea);
+
+        if (esMes) {
+            // Guardar la anterior si existe
+            if (entradaActual) entradas.push(entradaActual);
+            entradaActual = { mes: linea, comentario: '', foto: '' };
+        } else if (esLink && entradaActual) {
+            entradaActual.foto = linea;
+        } else if (!esLink && entradaActual) {
+            // Es comentario adicional
+            entradaActual.comentario = linea;
+        }
+    });
+
+    // Guardar la última entrada
+    if (entradaActual) entradas.push(entradaActual);
+
+    return entradas;
+}
+
+
+function verAnomalia(dataIndex) {
+    if (dataIndex === undefined || dataIndex < 0 || dataIndex >= consultasData.length) {
+        alert('No hay datos de anomalía disponibles');
+        return;
     }
+
+    const item = consultasData[dataIndex];
+    const anomaliaTexto = item.Anomalia || item.anomalia || '';
+
+    if (!anomaliaTexto || anomaliaTexto.trim() === '') {
+        alert('Este registro no tiene historial de anomalías registrado.');
+        return;
+    }
+
+    const entradas = parsearAnomalia(anomaliaTexto);
+
+    if (entradas.length === 0) {
+        alert('No se pudo interpretar el historial de anomalías.');
+        return;
+    }
+
+    // Título del modal
+    const titulo = document.getElementById('anomaliaModalTitle');
+    titulo.textContent = `Anomalías - ${item.NombreCliente || 'Cliente'} (Cuenta: ${item.CuentaContrato || 'N/A'})`;
+
+    // Construir tabla dinámica
+    let html = `
+        <div style="overflow-x: auto;">
+            <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
+                <thead>
+                    <tr style="background: linear-gradient(135deg, #3b54d3, #3ac99c); color: white;">
+                        <th style="padding: 12px 15px; text-align: left; border-radius: 6px 0 0 0;">Mes</th>
+                        <th style="padding: 12px 15px; text-align: left;">Comentario</th>
+                        <th style="padding: 12px 15px; text-align: center; border-radius: 0 6px 0 0;">Foto</th>
+                    </tr>
+                </thead>
+                <tbody>`;
+
+    entradas.forEach((entrada, idx) => {
+        const bgColor = idx % 2 === 0 ? '#f7fafc' : '#ffffff';
+        const comentario = entrada.comentario || '<em style="color:#aaa;">Sin comentario</em>';
+        const foto = entrada.foto
+            ? `<a href="${entrada.foto}" target="_blank"
+                  style="display: inline-block; background: linear-gradient(135deg, #3b54d3, #3ac99c);
+                         color: white; padding: 6px 14px; border-radius: 8px; text-decoration: none;
+                         font-weight: 600; font-size: 13px;">
+                  📸 Ver foto
+               </a>`
+            : '<span style="color:#ccc; font-size:13px;">Sin foto</span>';
+
+        html += `
+            <tr style="background: ${bgColor}; border-bottom: 1px solid #e2e8f0;">
+                <td style="padding: 12px 15px; font-weight: 700; color: #3b54d3; white-space: nowrap;">
+                    ${entrada.mes}
+                </td>
+                <td style="padding: 12px 15px; color: #4a5568; line-height: 1.5;">
+                    ${comentario}
+                </td>
+                <td style="padding: 12px 15px; text-align: center;">
+                    ${foto}
+                </td>
+            </tr>`;
+    });
+
+    html += `
+                </tbody>
+            </table>
+        </div>
+        <p style="margin-top: 15px; color: #999; font-size: 12px; text-align: right;">
+            ${entradas.length} registro(s) encontrado(s)
+        </p>`;
+
+    document.getElementById('anomaliaContenido').innerHTML = html;
+    document.getElementById('anomaliaModal').style.display = 'block';
+}
+
+
+function cerrarAnomalia() {
+    document.getElementById('anomaliaModal').style.display = 'none';
+    document.getElementById('anomaliaContenido').innerHTML = '';
+}
+
 
     // Funciones para descarga KML
 function descargarKML() {
@@ -16629,35 +16757,44 @@ function formatearComentario(valor, esDireccion = false) {
 // ===================================================================
 
 function generarBotonesAccion(item, index, config) {
-    let html = '<div class="action-buttons">';
- 
-    config.actions.forEach(action => {
-        const val = item[action];
-        if (!val) return;
+    let html = '<div class="action-buttons">';
 
-        const isCoordenadasLector = (action === 'Coordenadas' || action === 'CoordenadasLector');
-        const isCoordenadasGis = (action === 'Coordenadasgis' || action === 'CoordenadasGis');
-        const isFotoLink = (action === 'FotoLink' || action === 'fotolink');
-        const isGrafica = (action === 'Grafica');
- 
-        // Roles sin acceso a gráficas
-        const sinGraficas = ['Lectura', 'Contratista', 'ATTF', 'Poda'];
-        const puedeVerGraficas = currentUser && currentUser.rol && !sinGraficas.includes(currentUser.rol);
- 
-        if (isCoordenadasLector) {
-            html += `<button class="btn btn-secondary" onclick="abrirCoordenadas('${val}')">📍 Coordenadas Lector</button>`;
-        } else if (isCoordenadasGis) {
-            html += `<button class="btn btn-secondary" onclick="abrirCoordenadas('${val}')">🗺️ Coordenadas GIS</button>`;
-        } else if (isFotoLink) {
-            html += `<button class="btn btn-secondary" onclick="verFoto('${val}')">📸 Ver Foto</button>`;
-        } else if (isGrafica && puedeVerGraficas) {
-            html += `<button class="btn btn-secondary" onclick="verGraficasPorIndice(${index})">📊 Ver Consumos</button>`;
-        }
-    });
- 
-    html += '</div></div>'; // Cierre action-buttons y result-card
-    return html;
+    const sinGraficas = ['Lectura', 'Contratista', 'ATTF', 'Poda'];
+    const puedeVerGraficas = currentUser && currentUser.rol && !sinGraficas.includes(currentUser.rol);
+
+    config.actions.forEach(action => {
+        const val = item[action];
+        if (!val) return;
+
+        const isCoordenadasLector = (action === 'Coordenadas' || action === 'CoordenadasLector');
+        const isCoordenadasGis = (action === 'Coordendasgis' || action === 'CoordenadasGis');
+        const isFotoLink = (action === 'FotoLink' || action === 'fotolink');
+        const isGrafica = (action === 'Grafica');
+
+        if (isCoordenadasLector) {
+            html += `<button class="btn btn-secondary" onclick="abrirCoordenadas('${val}')">📍 Coordenadas Lector</button>`;
+        } else if (isCoordenadasGis) {
+            html += `<button class="btn btn-secondary" onclick="abrirCoordenadas('${val}')">🗺️ Coordenadas GIS</button>`;
+        } else if (isFotoLink) {
+            html += `<button class="btn btn-secondary" onclick="verFoto('${val}')">📸 Ver Foto</button>`;
+        } else if (isGrafica && puedeVerGraficas) {
+            html += `<button class="btn btn-secondary" onclick="verGraficasPorIndice(${index})">📊 Ver Consumos</button>`;
+        }
+    });
+
+    // ✅ Botón Anomalía UNA SOLA VEZ, fuera del forEach
+    const tieneAnomalia = item.Anomalia || item.anomalia;
+    if (tieneAnomalia) {
+        html += `<button class="btn btn-secondary" onclick="verAnomalia(${index})"
+                    style="background: linear-gradient(135deg, #f093fb, #f5576c);">
+                    ⚠️ Ver Anomalías
+                 </button>`;
+    }
+
+    html += '</div></div>';
+    return html;
 }
+
 
 // ===================================================================
 // 🔍 BÚSQUEDA EN TABLAS RELACIONADAS (UNIFICADA)
